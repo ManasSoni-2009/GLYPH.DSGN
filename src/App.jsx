@@ -370,7 +370,8 @@ export default function App() {
                   const idata = mctx.createImageData(mask.width, mask.height);
                   const arr = mask.getAsUint8Array();
                   for(let i=0; i<arr.length; i++) {
-                     idata.data[i*4+3] = arr[i] > 0 ? 255 : 0; 
+                     // Inverting the mask: if arr[i] === 0, it is the person.
+                     idata.data[i*4+3] = arr[i] === 0 ? 255 : 0; 
                   }
                   mctx.putImageData(idata, 0, 0);
                }
@@ -467,22 +468,16 @@ export default function App() {
                        const r = data[offset], g = data[offset+1], b = data[offset+2];
                        let lum = 0.2126*r + 0.7152*g + 0.0722*b;
                        
-                       if (styleId === 'ascii') {
-                           if (settings.colorize) {
-                              const char = getAsciiChar(lum, settings.density);
-                              ctx.fillStyle = `rgb(${r},${g},${b})`;
-                              ctx.fillText(char, x * charWidth, y * fSize);
-                           } else {
-                              rowText += getAsciiChar(lum, settings.density);
-                           }
-                       } else if (styleId === 'matrix') {
-                           if (lum > settings.density * 2) {
-                              ctx.fillStyle = `rgb(0, ${Math.max(100, lum)}, 0)`;
-                              ctx.fillText(getMatrixChar(), x * charWidth, y * fSize);
-                           }
+                       if (settings.colorize && styleId === 'ascii') {
+                          const char = getAsciiChar(lum, settings.density);
+                          ctx.fillStyle = `rgb(${r},${g},${b})`;
+                          ctx.fillText(char, x * charWidth, y * fSize);
+                       } else {
+                          // Both ASCII and MATRIX use standard density maps to build strings
+                          rowText += getAsciiChar(lum, settings.density);
                        }
                     }
-                    if (styleId === 'ascii' && !settings.colorize) {
+                    if (!settings.colorize || styleId !== 'ascii') {
                        ctx.fillText(rowText, 0, y * fSize);
                     }
                 }
