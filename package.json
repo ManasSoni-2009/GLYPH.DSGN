@@ -12,11 +12,12 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.5",
+    "html2canvas": "^1.4.1",
+    "lucide-react": "^0.468.0",
+    "puppeteer": "^25.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^0.468.0",
-    "html2canvas": "^1.4.1"
+    "vite": "^6.0.5"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
