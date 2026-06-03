@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImageSegmenter, FilesetResolver } from "@mediapipe/tasks-vision";
 import {
-  Aperture, Camera, ChevronDown, Clipboard, Download, ImageIcon, Shuffle, Sparkles, Upload
+  Aperture, Camera, ChevronDown, Clipboard, Download, ImageIcon, Shuffle, Sparkles, Upload, ShieldCheck, X
 } from "lucide-react";
 
 const ALL_STYLES = [
@@ -357,6 +357,7 @@ function Slider({ label, value, setValue, min=0, max=100 }) {
 }
 
 export default function App() {
+  const [showPrivacy, setShowPrivacy] = useState(true);
   const [styleId, setStyleId] = useState("ascii");
   const [palette, setPalette] = useState("green");
   const [fontSize, setFontSize] = useState(12);
@@ -691,9 +692,38 @@ export default function App() {
 
   return (
     <main 
-      className="min-h-screen bg-deck text-bone flex flex-col xl:flex-row xl:h-screen xl:overflow-hidden"
+      className="min-h-screen bg-deck text-bone flex flex-col xl:flex-row xl:h-screen xl:overflow-hidden relative"
       style={{ "--color-accent": activePalette.fg, "--bg-accent": activePalette.bg }}
     >
+      {/* PRIVACY MODAL */}
+      {showPrivacy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm border border-bone/25 bg-black p-6 shadow-2xl">
+            <button 
+              onClick={() => setShowPrivacy(false)}
+              className="absolute right-4 top-4 text-ghost transition-colors hover:text-volt"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="mb-4 flex items-center gap-3">
+              <ShieldCheck className="h-6 w-6 text-volt" />
+              <h2 className="text-sm font-bold uppercase tracking-widest text-bone">100% Client-Side</h2>
+            </div>
+            <p className="mb-6 text-xs leading-relaxed text-ghost">
+              GLYPH_DSGN processes all camera and image data directly on your device. 
+              <strong> Absolutely no media is sent to or stored on any server.</strong>
+            </p>
+            <button 
+              onClick={() => setShowPrivacy(false)}
+              className="w-full border border-bone/25 bg-volt py-3 text-[10px] font-bold uppercase tracking-widest text-black transition-colors hover:bg-bone"
+            >
+              I Understand
+            </button>
+          </div>
+        </div>
+      )}
+
+
       {/* MOBILE HEADER */}
       <div className="flex items-center justify-between border-b border-bone/25 bg-black p-4 xl:hidden shrink-0">
         <div>
