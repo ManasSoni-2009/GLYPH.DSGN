@@ -592,20 +592,22 @@ export default function App() {
         // 4. Color Correction, Depth & Smoothing
         const depthPower = 1 + (settings.depth / 100) * 4;
         const contrastFactor = (259 * (settings.contrast * 2.55 + 255)) / (255 * (259 - settings.contrast * 2.55));
-        for (let i = 0; i < data.length; i+=4) {
-            for (let c=0; c<3; c++) {
-               let v = data[i+c];
-               v = v * (settings.brightness / 100);
-               
-               if (settings.depth > 0) {
-                 v = Math.pow(v / 255, depthPower) * 255;
-               }
-               
-               if (settings.contrast !== 100) {
-                 v = contrastFactor * (v - 128) + 128;
-               }
-
-               data[i+c] = Math.max(0, Math.min(255, v));
+        
+        if (!isTextMode) {
+            for (let i = 0; i < data.length; i+=4) {
+                for (let c=0; c<3; c++) {
+                   let v = data[i+c];
+                   if (settings.contrast !== 100) {
+                     v = contrastFactor * (v - 128) + 128;
+                   }
+                   v = v * (settings.brightness / 100);
+                   
+                   if (settings.depth > 0) {
+                     v = Math.pow(v / 255, depthPower) * 255;
+                   }
+    
+                   data[i+c] = Math.max(0, Math.min(255, v));
+                }
             }
         }
         
@@ -650,7 +652,13 @@ export default function App() {
                              const y = r*4 + dy;
                              if (x >= cols || y >= rows) continue;
                              const offset = (y * cols + x) * 4;
-                             const lum = 0.2126*data[offset] + 0.7152*data[offset+1] + 0.0722*data[offset+2];
+                             let lum = 0.2126*data[offset] + 0.7152*data[offset+1] + 0.0722*data[offset+2];
+                             
+                             if (settings.contrast !== 100) lum = contrastFactor * (lum - 128) + 128;
+                             lum = lum * (settings.brightness / 100);
+                             if (settings.depth > 0) lum = Math.pow(lum / 255, depthPower) * 255;
+                             lum = Math.max(0, Math.min(255, lum));
+
                              if (lum > settings.density * 2.5) code += dots[dy][dx];
                           }
                       }
@@ -662,21 +670,26 @@ export default function App() {
                 for (let y = 0; y < rows; y++) {
                     let rowText = "";
                     for (let x = 0; x < cols; x++) {
-                       const offset = (y * cols + x) * 4;
-                       const r = data[offset], g = data[offset+1], b = data[offset+2];
-                       let lum = 0.2126*r + 0.7152*g + 0.0722*b;
-                       
-                       if (settings.colorize && styleId === 'ascii') {
-                          const char = getAsciiChar(lum, settings.density);
-                          ctx.fillStyle = `rgb(${r},${g},${b})`;
-                          ctx.fillText(char, x * charWidth, y * fSize);
-                       } else {
-                          // Both ASCII and MATRIX use standard density maps to build strings
-                          rowText += getAsciiChar(lum, settings.density);
-                       }
+                        const offset = (y * cols + x) * 4;
+                        const r = data[offset], g = data[offset+1], b = data[offset+2];
+                        let lum = 0.2126*r + 0.7152*g + 0.0722*b;
+                        
+                        if (settings.contrast !== 100) lum = contrastFactor * (lum - 128) + 128;
+                        lum = lum * (settings.brightness / 100);
+                        if (settings.depth > 0) lum = Math.pow(lum / 255, depthPower) * 255;
+                        lum = Math.max(0, Math.min(255, lum));
+                        
+                        if (settings.colorize && (styleId === 'ascii' || styleId === 'matrix')) {
+                           const char = getAsciiChar(lum, settings.density);
+                           ctx.fillStyle = `rgb(${r},${g},${b})`;
+                           ctx.fillText(char, x * charWidth, y * fSize);
+                        } else {
+                           rowText += getAsciiChar(lum, settings.density);
+                        }
                     }
-                    if (!settings.colorize || styleId !== 'ascii') {
-                       ctx.fillText(rowText, 0, y * fSize);
+                    if (!settings.colorize || (styleId !== 'ascii' && styleId !== 'matrix')) {
+                        ctx.fillStyle = palette.fg;
+                        ctx.fillText(rowText, 0, y * fSize);
                     }
                 }
             }
