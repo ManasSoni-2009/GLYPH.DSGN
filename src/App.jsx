@@ -58,6 +58,17 @@ function renderNonTextFilter(ctx, styleId, settings, width, height) {
   const data = imgData.data;
 
   const getLum = (i) => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  const pal = PALETTES[settings.palette];
+  
+  const hex2rgb = (hex) => {
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return [r,g,b];
+  };
+  const fgRgb = hex2rgb(pal.fg);
+  const bgRgb = hex2rgb(pal.bg);
+  const altRgb = hex2rgb(pal.alt);
 
   if (styleId === "pixelsort") {
     const threshold = settings.density * 2.5;
@@ -150,6 +161,161 @@ function renderNonTextFilter(ctx, styleId, settings, width, height) {
         data[i] = copy[(y * width + xr) * 4];
         data[i + 2] = copy[(y * width + xb) * 4 + 2];
         if (y % 19 === 0) data[i + 1] = clamp(data[i + 1] + 90);
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } else if (styleId === "pixel") {
+    for (let i = 0; i < data.length; i+=4) {
+      const lum = getLum(i);
+      let r, g, b;
+      if (lum < 85) { r=bgRgb[0]; g=bgRgb[1]; b=bgRgb[2]; }
+      else if (lum < 170) { r=altRgb[0]; g=altRgb[1]; b=altRgb[2]; }
+      else { r=fgRgb[0]; g=fgRgb[1]; b=fgRgb[2]; }
+      data[i]=r; data[i+1]=g; data[i+2]=b;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } else if (styleId === "halftone") {
+    ctx.fillStyle = pal.bg;
+    ctx.fillRect(0,0,width,height);
+    ctx.fillStyle = pal.fg;
+    const step = Math.max(3, Math.round(settings.fontSize / 1.5));
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const i = (y * width + x) * 4;
+        const lum = getLum(i);
+        const radius = (lum / 255) * (step / 1.2);
+        if (radius > 0.5) {
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  } else if (styleId === "lowpoly") {
+    const step = Math.max(4, Math.round(settings.fontSize));
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const i = (y * width + x) * 4;
+        const r = data[i], g = data[i+1], b = data[i+2];
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.beginPath();
+        const offsetX = (seededNoise(x*y) - 0.5) * step;
+        const offsetY = (seededNoise(x+y) - 0.5) * step;
+        ctx.moveTo(x + offsetX, y + offsetY);
+        ctx.lineTo(x + step + offsetX, y - offsetY);
+        ctx.lineTo(x + step - offsetX, y + step + offsetY);
+        ctx.lineTo(x - offsetX, y + step - offsetY);
+        ctx.fill();
+      }
+    }
+  } else if (styleId === "glass") {
+    const copy = new Uint8ClampedArray(data);
+    const amount = settings.density / 10;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const dx = (seededNoise(x * y) - 0.5) * amount;
+        const dy = (seededNoise(y * 100 + x) - 0.5) * amount;
+        const sx = clamp(Math.round(x + dx), 0, width-1);
+        const sy = clamp(Math.round(y + dy), 0, height-1);
+        const si = (sy * width + sx) * 4;
+        const di = (y * width + x) * 4;
+        data[di] = copy[si]; data[di+1] = copy[si+1]; data[di+2] = copy[si+2];
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } else if (styleId === "comic") {
+    const target = ctx.createImageData(width, height);
+    const tdata = target.data;
+    const kX = [-1,0,1, -2,0,2, -1,0,1];
+    const kY = [-1,-2,-1, 0,0,0, 1,2,1];
+    for(let y=1; y<height-1; y++) {
+      for(let x=1; x<width-1; x++) {
+        let px=0, py=0;
+        for(let ky=-1; ky<=1; ky++) {
+          for(let kx=-1; kx<=1; kx++) {
+            const idx = ((y+ky)*width + (x+kx))*4;
+            const val = getLum(idx);
+            const kIdx = (ky+1)*3 + (kx+1);
+            px += val * kX[kIdx];
+            py += val * kY[kIdx];
+          }
+        }
+        const mag = Math.sqrt(px*px + py*py);
+        const i = (y*width + x)*4;
+        if (mag > 100) {
+           tdata[i]=0; tdata[i+1]=0; tdata[i+2]=0; tdata[i+3]=255; 
+        } else {
+           tdata[i] = Math.round(data[i]/64)*64;
+           tdata[i+1] = Math.round(data[i+1]/64)*64;
+           tdata[i+2] = Math.round(data[i+2]/64)*64;
+           tdata[i+3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(target, 0, 0);
+  } else if (styleId === "film") {
+    for (let i = 0; i < data.length; i+=4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      data[i] = clamp(r*0.9 + g*0.1 + b*0.1);
+      data[i+1] = clamp(r*0.05 + g*0.9 + b*0.05);
+      data[i+2] = clamp(r*0.05 + g*0.05 + b*0.8);
+      const noise = (Math.random() - 0.5) * settings.grain;
+      data[i] += noise; data[i+1] += noise; data[i+2] += noise;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } else if (styleId === "dream") {
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(ctx.canvas, -2, -2, width+4, height+4);
+    ctx.globalAlpha = 1.0;
+    ctx.globalCompositeOperation = "source-over";
+  } else if (styleId === "print") {
+    for (let y = 0; y < height; y++) {
+      if (Math.random() < 0.05) continue;
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (Math.random() < settings.grain / 1000) {
+           const dust = Math.random() > 0.5 ? 255 : 0;
+           data[i]=dust; data[i+1]=dust; data[i+2]=dust;
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+    ctx.fillRect(2, 0, width, height);
+    ctx.globalCompositeOperation = "source-over";
+  } else if (styleId === "kinetic") {
+    const copy = new Uint8ClampedArray(data);
+    const cx = width/2, cy = height/2;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r=0, g=0, b=0;
+        let count=0;
+        for (let j=0; j<5; j++) {
+           const scale = 1 - (j * 0.02 * (settings.density/50));
+           const sx = clamp(Math.round(cx + (x - cx) * scale), 0, width-1);
+           const sy = clamp(Math.round(cy + (y - cy) * scale), 0, height-1);
+           const si = (sy * width + sx) * 4;
+           r += copy[si]; g += copy[si+1]; b += copy[si+2];
+           count++;
+        }
+        const i = (y * width + x) * 4;
+        data[i] = r/count; data[i+1] = g/count; data[i+2] = b/count;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  } else if (styleId === "dither") {
+    const bayer = [
+      [ 0,  8,  2, 10], [12,  4, 14,  6], [ 3, 11,  1,  9], [15,  7, 13,  5]
+    ];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const lum = getLum(i);
+        const threshold = (bayer[y % 4][x % 4] / 16) * 255;
+        const color = lum > threshold ? fgRgb : bgRgb;
+        data[i] = color[0]; data[i+1] = color[1]; data[i+2] = color[2];
       }
     }
     ctx.putImageData(imgData, 0, 0);
