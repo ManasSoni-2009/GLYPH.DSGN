@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
+import { ImageSegmenter, FilesetResolver } from "@mediapipe/tasks-vision";
 import {
-  Aperture,
-  Camera,
-  ChevronDown,
-  Clipboard,
-  Download,
-  Image as ImageIcon,
-  Shuffle,
-  Sparkles,
-  Upload,
+  Aperture, Camera, ChevronDown, Clipboard, Download, ImageIcon, Shuffle, Sparkles, Upload
 } from "lucide-react";
 
 const ALL_STYLES = [
@@ -51,86 +43,117 @@ function seededNoise(seed) {
   return x - Math.floor(x);
 }
 
-function brightness(data, i) {
-  return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+function getAsciiChar(brightness, density) {
+  const chars = " .'`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+  return chars[Math.floor((brightness / 255) * (chars.length - 1))];
 }
 
-function hexToRgb(hex) {
-  const clean = hex.replace("#", "");
-  return [
-    parseInt(clean.slice(0, 2), 16),
-    parseInt(clean.slice(2, 4), 16),
-    parseInt(clean.slice(4, 6), 16),
-  ];
+function getMatrixChar() {
+  const chars = "ｦｧｨｩｪｫｬｭｮｯｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ";
+  return chars[Math.floor(Math.random() * chars.length)];
 }
 
-function paletteColor(value, palette) {
-  const fg = hexToRgb(palette.fg);
-  const bg = hexToRgb(palette.bg);
-  const t = value / 255;
-  return [
-    Math.round(bg[0] + (fg[0] - bg[0]) * t),
-    Math.round(bg[1] + (fg[1] - bg[1]) * t),
-    Math.round(bg[2] + (fg[2] - bg[2]) * t),
-  ];
-}
+function renderNonTextFilter(ctx, styleId, settings, width, height) {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
 
-function posterizeChannel(value, steps) {
-  return Math.round(Math.round(value / (255 / (steps - 1))) * (255 / (steps - 1)));
-}
+  const getLum = (i) => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
-function mutatePixels(ctx, fn) {
-  const { width, height } = ctx.canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) fn(data, i, i / 4, width, height);
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function addGrain(ctx, amount, colored = false) {
-  if(amount <= 0) return;
-  mutatePixels(ctx, (data, i, p) => {
-    const n = (seededNoise(p + amount) - 0.5) * amount;
-    data[i] = clamp(data[i] + n * (colored ? 1.35 : 1));
-    data[i + 1] = clamp(data[i + 1] + n);
-    data[i + 2] = clamp(data[i + 2] + n * (colored ? 0.75 : 1));
-  });
-}
-
-function drawBaseImage(ctx, img, settings, maxSize = 800) {
-  const iw = img.videoWidth || img.width;
-  const ih = img.videoHeight || img.height;
-  const ratio = Math.min(maxSize / iw, maxSize / ih, 1);
-  const width = Math.max(1, Math.round(iw * ratio));
-  const height = Math.max(1, Math.round(ih * ratio));
-  
-  if (ctx.canvas.width !== width || ctx.canvas.height !== height) {
-    ctx.canvas.width = width;
-    ctx.canvas.height = height;
-  }
-  
-  ctx.imageSmoothingEnabled = true;
-  if (img.videoWidth) {
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(img, -width, 0, width, height);
-    ctx.restore();
-  } else {
-    ctx.drawImage(img, 0, 0, width, height);
-  }
-
-  if (settings.brightness !== 100 || settings.contrast !== 100) {
-    mutatePixels(ctx, (data, i) => {
-      for (let c = 0; c < 3; c++) {
-        let v = data[i + c];
-        v = v * (settings.brightness / 100);
-        v = ((v / 255 - 0.5) * (settings.contrast / 100) + 0.5) * 255;
-        data[i + c] = clamp(v);
+  if (styleId === "pixelsort") {
+    const threshold = settings.density * 2.5;
+    for (let x = 0; x < width; x++) {
+      let col = [];
+      for (let y = 0; y < height; y++) {
+        const i = (y * width + x) * 4;
+        col.push({ r: data[i], g: data[i+1], b: data[i+2], a: data[i+3], lum: getLum(i) });
       }
-    });
-  }
+      let start = -1;
+      for (let y = 0; y <= height; y++) {
+        if (y < height && col[y].lum > threshold) {
+          if (start === -1) start = y;
+        } else {
+          if (start !== -1) {
+            const chunk = col.slice(start, y);
+            chunk.sort((a, b) => a.lum - b.lum);
+            for (let k = 0; k < chunk.length; k++) col[start + k] = chunk[k];
+            start = -1;
+          }
+        }
+      }
+      for (let y = 0; y < height; y++) {
+        const i = (y * width + x) * 4;
+        data[i] = col[y].r; data[i+1] = col[y].g; data[i+2] = col[y].b; data[i+3] = col[y].a;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
 
-  return { width, height };
+  } else if (styleId === "sobel") {
+    const target = ctx.createImageData(width, height);
+    const tdata = target.data;
+    const kX = [-1,0,1, -2,0,2, -1,0,1];
+    const kY = [-1,-2,-1, 0,0,0, 1,2,1];
+    
+    for(let y=1; y<height-1; y++) {
+      for(let x=1; x<width-1; x++) {
+        let px=0, py=0;
+        for(let ky=-1; ky<=1; ky++) {
+          for(let kx=-1; kx<=1; kx++) {
+            const idx = ((y+ky)*width + (x+kx))*4;
+            const val = getLum(idx);
+            const kIdx = (ky+1)*3 + (kx+1);
+            px += val * kX[kIdx];
+            py += val * kY[kIdx];
+          }
+        }
+        const mag = Math.min(255, Math.sqrt(px*px + py*py) * (settings.density/50));
+        const i = (y*width + x)*4;
+        tdata[i] = mag; tdata[i+1] = mag; tdata[i+2] = mag; tdata[i+3] = 255;
+      }
+    }
+    ctx.putImageData(target, 0, 0);
+
+  } else if (styleId === "crosshatch") {
+    ctx.fillStyle = PALETTES[settings.palette].bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = PALETTES[settings.palette].fg;
+    ctx.lineWidth = 1;
+    const step = Math.max(3, Math.round(settings.fontSize / 2));
+    
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const i = (y * width + x) * 4;
+        const b = getLum(i);
+        ctx.beginPath();
+        if (b < 200) { ctx.moveTo(x, y); ctx.lineTo(x + step, y + step); }
+        if (b < 150) { ctx.moveTo(x + step, y); ctx.lineTo(x, y + step); }
+        if (b < 100) { ctx.moveTo(x, y + step / 2); ctx.lineTo(x + step, y + step / 2); }
+        if (b < 50)  { ctx.moveTo(x + step / 2, y); ctx.lineTo(x + step / 2, y + step); }
+        ctx.stroke();
+      }
+    }
+
+  } else if (styleId === "vignette") {
+    const grad = ctx.createRadialGradient(width/2, height/2, width * (settings.bloom/200), width/2, height/2, width * 0.8);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,0.85)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+  } else if (styleId === "glitch") {
+    const copy = new Uint8ClampedArray(data);
+    const offset = Math.round(settings.chromatic * 0.28) + 2;
+    for (let y = 0; y < height; y++) {
+      const bandShift = Math.sin(y * 0.08) * settings.density * 0.18;
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const xr = clamp(Math.round(x + offset + bandShift), 0, width - 1);
+        const xb = clamp(Math.round(x - offset + bandShift), 0, width - 1);
+        data[i] = copy[(y * width + xr) * 4];
+        data[i + 2] = copy[(y * width + xb) * 4 + 2];
+        if (y % 19 === 0) data[i + 1] = clamp(data[i + 1] + 90);
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
 }
 
 function downloadBlob(blob, filename) {
@@ -140,448 +163,6 @@ function downloadBlob(blob, filename) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(href);
-}
-
-// ==================== ART STYLES ====================
-
-function drawAscii(ctx, img, settings) {
-  const chars = " .'`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-  const { width, height } = drawBaseImage(ctx, img, settings, 200);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  
-  const fSize = settings.fontSize;
-  ctx.canvas.width = width * (fSize * 0.6);
-  ctx.canvas.height = height * fSize;
-  const palette = PALETTES[settings.palette];
-  
-  ctx.fillStyle = palette.bg;
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.font = `${fSize}px JetBrains Mono, monospace`;
-  ctx.textBaseline = "top";
-  
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = (y * width + x) * 4;
-      const b = brightness(data, i);
-      const char = chars[Math.floor((b / 255) * (chars.length - 1))];
-      const [r, g, bl] = paletteColor(settings.colorize ? b : 255 - b, palette);
-      ctx.fillStyle = settings.colorize ? `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})` : `rgb(${r}, ${g}, ${bl})`;
-      ctx.fillText(char, x * (fSize * 0.6), y * fSize);
-    }
-  }
-}
-
-function drawBraille(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings, 400);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  
-  const fSize = Math.max(8, settings.fontSize);
-  const cols = Math.floor(width / 2);
-  const rows = Math.floor(height / 4);
-  
-  ctx.canvas.width = cols * (fSize * 0.6);
-  ctx.canvas.height = rows * fSize;
-  const palette = PALETTES[settings.palette];
-  
-  ctx.fillStyle = palette.bg;
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.font = `${fSize}px JetBrains Mono, monospace`;
-  ctx.textBaseline = "top";
-  ctx.fillStyle = palette.fg;
-  
-  const thresh = settings.density * 2.5;
-  const dots = [[1, 8], [2, 16], [4, 32], [64, 128]];
-  
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      let code = 0;
-      for (let dy = 0; dy < 4; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const x = c * 2 + dx;
-          const y = r * 4 + dy;
-          const i = (y * width + x) * 4;
-          if (brightness(data, i) > thresh) {
-            code += dots[dy][dx];
-          }
-        }
-      }
-      if (code > 0) {
-        ctx.fillText(String.fromCharCode(0x2800 + code), c * (fSize * 0.6), r * fSize);
-      }
-    }
-  }
-}
-
-function drawMatrix(ctx, img, settings) {
-  const chars = "ｦｧｨｩｪｫｬｭｮｯｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ";
-  const { width, height } = drawBaseImage(ctx, img, settings, 200);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  
-  const fSize = settings.fontSize;
-  ctx.canvas.width = width * (fSize * 0.6);
-  ctx.canvas.height = height * fSize;
-  
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.font = `${fSize}px JetBrains Mono, monospace`;
-  ctx.textBaseline = "top";
-  
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = (y * width + x) * 4;
-      const b = brightness(data, i);
-      if (b > settings.density * 2) {
-        const char = chars[Math.floor(Math.random() * chars.length)];
-        ctx.fillStyle = `rgb(0, ${b}, 0)`;
-        ctx.fillText(char, x * (fSize * 0.6), y * fSize);
-      }
-    }
-  }
-}
-
-function drawCrosshatch(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  ctx.fillStyle = PALETTES[settings.palette].bg;
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = PALETTES[settings.palette].fg;
-  ctx.lineWidth = 1;
-  const step = Math.max(3, Math.round(settings.fontSize / 2));
-  
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const i = (y * width + x) * 4;
-      const b = brightness(data, i);
-      ctx.beginPath();
-      if (b < 200) { ctx.moveTo(x, y); ctx.lineTo(x + step, y + step); }
-      if (b < 150) { ctx.moveTo(x + step, y); ctx.lineTo(x, y + step); }
-      if (b < 100) { ctx.moveTo(x, y + step / 2); ctx.lineTo(x + step, y + step / 2); }
-      if (b < 50)  { ctx.moveTo(x + step / 2, y); ctx.lineTo(x + step / 2, y + step); }
-      ctx.stroke();
-    }
-  }
-}
-
-function drawPixelSort(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings, 400); // lower res for perf
-  const imgData = ctx.getImageData(0, 0, width, height);
-  const data = imgData.data;
-  const threshold = settings.density * 2.5;
-  
-  for (let x = 0; x < width; x++) {
-    let col = [];
-    for (let y = 0; y < height; y++) {
-      const i = (y * width + x) * 4;
-      col.push({ r: data[i], g: data[i+1], b: data[i+2], a: data[i+3], lum: brightness(data, i) });
-    }
-    
-    let start = -1;
-    for (let y = 0; y <= height; y++) {
-      if (y < height && col[y].lum > threshold) {
-        if (start === -1) start = y;
-      } else {
-        if (start !== -1) {
-          const chunk = col.slice(start, y);
-          chunk.sort((a, b) => a.lum - b.lum);
-          for (let k = 0; k < chunk.length; k++) col[start + k] = chunk[k];
-          start = -1;
-        }
-      }
-    }
-    for (let y = 0; y < height; y++) {
-      const i = (y * width + x) * 4;
-      data[i] = col[y].r; data[i+1] = col[y].g; data[i+2] = col[y].b; data[i+3] = col[y].a;
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-}
-
-function drawSobel(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings, 600);
-  const source = ctx.getImageData(0, 0, width, height).data;
-  const target = ctx.createImageData(width, height);
-  const tdata = target.data;
-  const kX = [-1,0,1, -2,0,2, -1,0,1];
-  const kY = [-1,-2,-1, 0,0,0, 1,2,1];
-  
-  for(let y=1; y<height-1; y++) {
-    for(let x=1; x<width-1; x++) {
-      let px=0, py=0;
-      for(let ky=-1; ky<=1; ky++) {
-        for(let kx=-1; kx<=1; kx++) {
-          const idx = ((y+ky)*width + (x+kx))*4;
-          const val = brightness(source, idx);
-          const kIdx = (ky+1)*3 + (kx+1);
-          px += val * kX[kIdx];
-          py += val * kY[kIdx];
-        }
-      }
-      const mag = Math.min(255, Math.sqrt(px*px + py*py) * (settings.density/50));
-      const i = (y*width + x)*4;
-      tdata[i] = mag; tdata[i+1] = mag; tdata[i+2] = mag; tdata[i+3] = 255;
-    }
-  }
-  ctx.putImageData(target, 0, 0);
-}
-
-function drawVignette(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const grad = ctx.createRadialGradient(width/2, height/2, width * (settings.bloom/200), width/2, height/2, width * 0.8);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(1, "rgba(0,0,0,0.85)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, height);
-}
-
-function drawPixel(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const block = Math.max(5, Math.round(settings.density / 6));
-  const tmp = document.createElement("canvas");
-  tmp.width = Math.max(1, Math.round(width / block));
-  tmp.height = Math.max(1, Math.round(height / block));
-  const tctx = tmp.getContext("2d");
-  tctx.imageSmoothingEnabled = false;
-  tctx.drawImage(ctx.canvas, 0, 0, tmp.width, tmp.height);
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(tmp, 0, 0, width, height);
-  mutatePixels(ctx, (data, i) => {
-    data[i] = posterizeChannel(data[i], 4);
-    data[i + 1] = posterizeChannel(data[i + 1], 4);
-    data[i + 2] = posterizeChannel(data[i + 2], 4);
-  });
-}
-
-function drawGlitch(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const source = ctx.getImageData(0, 0, width, height);
-  const data = source.data;
-  const copy = new Uint8ClampedArray(data);
-  const offset = Math.round(settings.chromatic * 0.28) + 2;
-  for (let y = 0; y < height; y += 1) {
-    const bandShift = Math.sin(y * 0.08) * settings.density * 0.18;
-    for (let x = 0; x < width; x += 1) {
-      const i = (y * width + x) * 4;
-      const xr = clamp(Math.round(x + offset + bandShift), 0, width - 1);
-      const xb = clamp(Math.round(x - offset + bandShift), 0, width - 1);
-      data[i] = copy[(y * width + xr) * 4];
-      data[i + 2] = copy[(y * width + xb) * 4 + 2];
-      if (y % 19 === 0) data[i + 1] = clamp(data[i + 1] + 90);
-    }
-  }
-  ctx.putImageData(source, 0, 0);
-  for (let y = 0; y < height; y += 33) {
-    if (seededNoise(y) > 0.54) {
-      const shift = (seededNoise(y + 8) - 0.5) * settings.density * 3;
-      ctx.drawImage(ctx.canvas, 0, y, width, 13, shift, y, width, 13);
-    }
-  }
-}
-
-function drawHalftone(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const step = Math.max(6, Math.round(settings.density / 5));
-  ctx.fillStyle = "#f5f2e8";
-  ctx.fillRect(0, 0, width, height);
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const i = (Math.min(height - 1, y) * width + Math.min(width - 1, x)) * 4;
-      const b = brightness(data, i);
-      const r = ((255 - b) / 255) * step * 0.62;
-      ctx.fillStyle = `rgb(${clamp(data[i] - 35)}, ${clamp(data[i + 1] - 35)}, ${clamp(data[i + 2] - 35)})`;
-      ctx.beginPath();
-      ctx.arc(x + step / 2, y + step / 2, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-function drawLowPoly(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const cell = Math.max(24, Math.round(92 - settings.density));
-  for (let y = 0; y < height; y += cell) {
-    for (let x = 0; x < width; x += cell) {
-      const i = (Math.min(height - 1, y + cell / 2) * width + Math.min(width - 1, x + cell / 2)) * 4;
-      ctx.fillStyle = `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})`;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + cell, y + seededNoise(x + y) * cell);
-      ctx.lineTo(x + seededNoise(y + 4) * cell, y + cell);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = `rgba(0, 0, 0, ${0.08 + seededNoise(x) * 0.16})`;
-      ctx.beginPath();
-      ctx.moveTo(x + cell, y);
-      ctx.lineTo(x + cell, y + cell);
-      ctx.lineTo(x, y + cell);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-}
-
-function drawGlass(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const cell = Math.max(22, Math.round(80 - settings.density / 1.6));
-  ctx.lineWidth = Math.max(3, cell * 0.08);
-  for (let y = 0; y < height; y += cell) {
-    for (let x = 0; x < width; x += cell) {
-      const i = (Math.min(height - 1, y + cell / 2) * width + Math.min(width - 1, x + cell / 2)) * 4;
-      const wobble = seededNoise(x * 7 + y) * cell * 0.35;
-      ctx.fillStyle = `rgb(${clamp(data[i] + 22)}, ${clamp(data[i + 1] + 22)}, ${clamp(data[i + 2] + 22)})`;
-      ctx.strokeStyle = "#050505";
-      ctx.beginPath();
-      ctx.moveTo(x + wobble, y);
-      ctx.lineTo(x + cell, y + wobble);
-      ctx.lineTo(x + cell - wobble, y + cell);
-      ctx.lineTo(x, y + cell - wobble);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-}
-
-function drawComic(ctx, img, settings) {
-  drawBaseImage(ctx, img, settings);
-  mutatePixels(ctx, (data, i) => {
-    data[i] = posterizeChannel(data[i] * 1.08, 4);
-    data[i + 1] = posterizeChannel(data[i + 1] * 1.08, 4);
-    data[i + 2] = posterizeChannel(data[i + 2] * 1.08, 4);
-  });
-  const { width, height } = ctx.canvas;
-  const dot = Math.max(7, Math.round(24 - settings.density / 6));
-  ctx.globalAlpha = 0.28;
-  ctx.fillStyle = "#050505";
-  for (let y = 0; y < height; y += dot) {
-    for (let x = (y / dot) % 2 ? dot / 2 : 0; x < width; x += dot) {
-      ctx.beginPath();
-      ctx.arc(x, y, dot * 0.18, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-function drawFilm(ctx, img, settings) {
-  drawBaseImage(ctx, img, settings);
-  mutatePixels(ctx, (data, i, p) => {
-    const b = brightness(data, i);
-    const halation = b > 190 ? (b - 190) * (settings.bloom / 80) : 0;
-    const grain = (seededNoise(p) - 0.5) * settings.grain;
-    data[i] = clamp(data[i] * 1.08 + halation + grain);
-    data[i + 1] = clamp(data[i + 1] * 0.98 + grain * 0.7);
-    data[i + 2] = clamp(data[i + 2] * 0.86 - halation * 0.25 + grain * 0.5);
-  });
-}
-
-function drawDream(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  ctx.globalAlpha = 0.42;
-  ctx.filter = `blur(${Math.max(3, settings.bloom / 18)}px) saturate(1.35)`;
-  ctx.drawImage(ctx.canvas, 0, 0, width, height);
-  ctx.filter = "none";
-  ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.25;
-  ctx.drawImage(ctx.canvas, settings.chromatic / 7, 0);
-  ctx.drawImage(ctx.canvas, -settings.chromatic / 7, 0);
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = "source-over";
-}
-
-function drawPrint(ctx, img, settings) {
-  drawBaseImage(ctx, img, settings);
-  mutatePixels(ctx, (data, i, p) => {
-    const n = seededNoise(p);
-    data[i] = clamp(data[i] * 1.06 + 16);
-    data[i + 1] = clamp(data[i + 1] * 0.98 + 10);
-    data[i + 2] = clamp(data[i + 2] * 0.88);
-    if (n > 0.992) data[i] = data[i + 1] = data[i + 2] = 245;
-  });
-  const { width, height } = ctx.canvas;
-  ctx.strokeStyle = "rgba(255,255,255,0.45)";
-  for (let i = 0; i < settings.grain / 2; i += 1) {
-    const x = seededNoise(i + 3) * width;
-    ctx.beginPath();
-    ctx.moveTo(x, seededNoise(i + 4) * height);
-    ctx.lineTo(x + seededNoise(i + 8) * 40 - 20, height);
-    ctx.stroke();
-  }
-  const grad = ctx.createLinearGradient(0, 0, width, height);
-  grad.addColorStop(0, "rgba(255, 80, 0, 0.28)");
-  grad.addColorStop(0.45, "transparent");
-  grad.addColorStop(1, "rgba(0, 160, 255, 0.13)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, height);
-}
-
-function drawKinetic(ctx, img, settings) {
-  const { width, height } = drawBaseImage(ctx, img, settings);
-  ctx.globalAlpha = 0.12;
-  for (let i = 1; i < 12; i += 1) {
-    const offset = i * settings.density * 0.08;
-    ctx.drawImage(ctx.canvas, -offset, 0, width + offset * 2, height);
-  }
-  ctx.globalAlpha = 1;
-}
-
-function drawDither(ctx, img, settings) {
-  drawBaseImage(ctx, img, settings);
-  const { width, height } = ctx.canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  const lum = new Float32Array(width * height);
-  for (let i = 0; i < data.length; i += 4) lum[i / 4] = brightness(data, i);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const idx = y * width + x;
-      const old = lum[idx];
-      const next = old < 128 ? 0 : 255;
-      const err = old - next;
-      lum[idx] = next;
-      [[1, 0, 7 / 16], [-1, 1, 3 / 16], [0, 1, 5 / 16], [1, 1, 1 / 16]].forEach(([dx, dy, amt]) => {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) lum[ny * width + nx] += err * amt;
-      });
-    }
-  }
-  const palette = PALETTES[settings.palette];
-  const fg = hexToRgb(palette.fg);
-  const bg = hexToRgb(palette.bg);
-  for (let i = 0; i < data.length; i += 4) {
-    const color = lum[i / 4] > 127 ? fg : bg;
-    data[i] = color[0];
-    data[i + 1] = color[1];
-    data[i + 2] = color[2];
-  }
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function renderImageStyle(ctx, img, styleId, settings) {
-  if (styleId === "ascii") drawAscii(ctx, img, settings);
-  else if (styleId === "braille") drawBraille(ctx, img, settings);
-  else if (styleId === "matrix") drawMatrix(ctx, img, settings);
-  else if (styleId === "crosshatch") drawCrosshatch(ctx, img, settings);
-  else if (styleId === "pixelsort") drawPixelSort(ctx, img, settings);
-  else if (styleId === "sobel") drawSobel(ctx, img, settings);
-  else if (styleId === "pixel") drawPixel(ctx, img, settings);
-  else if (styleId === "glitch") drawGlitch(ctx, img, settings);
-  else if (styleId === "halftone") drawHalftone(ctx, img, settings);
-  else if (styleId === "lowpoly") drawLowPoly(ctx, img, settings);
-  else if (styleId === "vignette") drawVignette(ctx, img, settings);
-  else if (styleId === "glass") drawGlass(ctx, img, settings);
-  else if (styleId === "comic") drawComic(ctx, img, settings);
-  else if (styleId === "film") drawFilm(ctx, img, settings);
-  else if (styleId === "dream") drawDream(ctx, img, settings);
-  else if (styleId === "print") drawPrint(ctx, img, settings);
-  else if (styleId === "kinetic") drawKinetic(ctx, img, settings);
-  else drawDither(ctx, img, settings);
-
-  if (settings.grain > 0) addGrain(ctx, settings.grain * 0.35, true);
 }
 
 function Slider({ label, value, setValue, min=0, max=100 }) {
@@ -621,23 +202,54 @@ export default function App() {
   const [brightnessVal, setBrightnessVal] = useState(100);
   const [colorize, setColorize] = useState(false);
   const [useWebcam, setUseWebcam] = useState(true);
+  const [isolateSubject, setIsolateSubject] = useState(true);
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState([]);
 
   const canvasRef = useRef(null);
+  const hiddenCanvasRef = useRef(null);
+  const maskCanvasRef = useRef(null);
+  const prevFrameRef = useRef(null);
+  const segmenterRef = useRef(null);
+  
   const videoRef = useRef(null);
   const staticImgRef = useRef(null);
   const animationRef = useRef(null);
   const outputRef = useRef(null);
+  
   const activePalette = PALETTES[palette];
 
   const settings = useMemo(() => ({
-    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, palette, colorize,
-  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, palette, colorize]);
+    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, palette, colorize, isolateSubject
+  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, palette, colorize, isolateSubject]);
 
   const flash = useCallback((message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 1200);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const initMediaPipe = async () => {
+      try {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+        const segmenter = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          outputCategoryMask: true,
+          outputConfidenceMasks: false
+        });
+        if (active) {
+            segmenterRef.current = segmenter;
+            console.log("MediaPipe Segmenter Loaded");
+        }
+      } catch (err) { console.error("MediaPipe failed to load", err); }
+    };
+    initMediaPipe();
+    return () => { active = false; };
   }, []);
 
   const addHistory = useCallback(() => {
@@ -667,6 +279,9 @@ export default function App() {
   }, [flash]);
 
   useEffect(() => {
+    if (!hiddenCanvasRef.current) hiddenCanvasRef.current = document.createElement("canvas");
+    if (!maskCanvasRef.current) maskCanvasRef.current = document.createElement("canvas");
+    
     if (!useWebcam) {
       if (videoRef.current?.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(t => t.stop());
@@ -674,7 +289,7 @@ export default function App() {
       }
       return;
     }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } })
       .then((stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -696,7 +311,8 @@ export default function App() {
 
   const drawFrame = useCallback(() => {
     if (!canvasRef.current) return;
-    const ctx = canvasRef.current.getContext("2d", { willReadFrequently: true });
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d", { alpha: false });
     
     let sourceImg = null;
     if (useWebcam && videoRef.current && videoRef.current.readyState >= 2) {
@@ -706,7 +322,177 @@ export default function App() {
     }
     
     if (sourceImg) {
-       renderImageStyle(ctx, sourceImg, styleId, settings);
+        const parent = canvas.parentElement;
+        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+        }
+        
+        const isTextMode = ["ascii", "braille", "matrix"].includes(styleId);
+        const fSize = settings.fontSize;
+        const charWidth = fSize * 0.6;
+        
+        let cols = isTextMode ? Math.floor(canvas.width / charWidth) : canvas.width;
+        let rows = isTextMode ? Math.floor(canvas.height / fSize) : canvas.height;
+        
+        if (!isTextMode) {
+           const maxSize = 800;
+           const ratio = Math.min(maxSize / cols, maxSize / rows, 1);
+           cols = Math.round(cols * ratio);
+           rows = Math.round(rows * ratio);
+        }
+        
+        if (cols <= 0 || rows <= 0) {
+            if (useWebcam) animationRef.current = requestAnimationFrame(drawFrame);
+            return;
+        }
+
+        const hiddenCanvas = hiddenCanvasRef.current;
+        if (hiddenCanvas.width !== cols || hiddenCanvas.height !== rows) {
+           hiddenCanvas.width = cols;
+           hiddenCanvas.height = rows;
+           prevFrameRef.current = null;
+        }
+        
+        const hctx = hiddenCanvas.getContext("2d", { willReadFrequently: true });
+        
+        // 1. Segmentation
+        if (settings.isolateSubject && segmenterRef.current) {
+            try {
+               const result = segmenterRef.current.segmentForVideo(sourceImg, performance.now());
+               if (result.categoryMask) {
+                  const mask = result.categoryMask;
+                  const mCanvas = maskCanvasRef.current;
+                  if (mCanvas.width !== mask.width || mCanvas.height !== mask.height) {
+                     mCanvas.width = mask.width; mCanvas.height = mask.height;
+                  }
+                  const mctx = mCanvas.getContext("2d", {willReadFrequently: true});
+                  const idata = mctx.createImageData(mask.width, mask.height);
+                  const arr = mask.getAsUint8Array();
+                  for(let i=0; i<arr.length; i++) {
+                     idata.data[i*4+3] = arr[i] > 0 ? 255 : 0; 
+                  }
+                  mctx.putImageData(idata, 0, 0);
+               }
+            } catch(e) {}
+        }
+        
+        // 2. Draw downsampled source
+        hctx.save();
+        if (useWebcam) {
+            hctx.translate(cols, 0);
+            hctx.scale(-1, 1);
+        }
+        hctx.drawImage(sourceImg, 0, 0, cols, rows);
+        hctx.restore();
+        
+        // 3. Mask out background
+        if (settings.isolateSubject && maskCanvasRef.current.width > 0) {
+            hctx.save();
+            if (useWebcam) { hctx.translate(cols, 0); hctx.scale(-1, 1); }
+            hctx.globalCompositeOperation = "destination-in";
+            hctx.drawImage(maskCanvasRef.current, 0, 0, cols, rows);
+            hctx.globalCompositeOperation = "destination-over";
+            hctx.fillStyle = "black";
+            hctx.fillRect(0, 0, cols, rows); 
+            hctx.restore();
+        }
+        
+        const frameData = hctx.getImageData(0, 0, cols, rows);
+        const data = frameData.data;
+        
+        // 4. Color Correction & Smoothing
+        const contrastFactor = (259 * (settings.contrast * 2.55 + 255)) / (255 * (259 - settings.contrast * 2.55));
+        for (let i = 0; i < data.length; i+=4) {
+            for (let c=0; c<3; c++) {
+               let v = data[i+c];
+               v = v * (settings.brightness / 100);
+               v = ((v / 255 - 0.5) * (settings.contrast / 100) + 0.5) * 255;
+               data[i+c] = Math.max(0, Math.min(255, v));
+            }
+        }
+        
+        if (!prevFrameRef.current || prevFrameRef.current.length !== data.length) {
+            prevFrameRef.current = new Float32Array(data.length);
+            for(let i=0; i<data.length; i++) prevFrameRef.current[i] = data[i];
+        }
+        const prev = prevFrameRef.current;
+        const inertia = 0.65;
+        for(let i=0; i<data.length; i++) {
+            const nv = prev[i] + (data[i] - prev[i]) * (1 - inertia);
+            prev[i] = nv;
+            data[i] = nv;
+        }
+        
+        // 5. Render
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        if (isTextMode) {
+            ctx.font = `${fSize}px 'JetBrains Mono', monospace`;
+            ctx.textBaseline = "top";
+            
+            const palette = PALETTES[settings.palette];
+            if (styleId === 'matrix') ctx.fillStyle = palette.fg;
+            else if (styleId === 'ascii' && !settings.colorize) ctx.fillStyle = palette.fg;
+            
+            if (styleId === 'braille') {
+                const bRows = Math.floor(rows / 4);
+                const bCols = Math.floor(cols / 2);
+                ctx.fillStyle = palette.fg;
+                for (let r = 0; r < bRows; r++) {
+                   let rowText = "";
+                   for (let c = 0; c < bCols; c++) {
+                      let code = 0;
+                      const dots = [[1, 8], [2, 16], [4, 32], [64, 128]];
+                      for (let dy=0; dy<4; dy++) {
+                          for(let dx=0; dx<2; dx++) {
+                             const x = c*2 + dx;
+                             const y = r*4 + dy;
+                             if (x >= cols || y >= rows) continue;
+                             const offset = (y * cols + x) * 4;
+                             const lum = 0.2126*data[offset] + 0.7152*data[offset+1] + 0.0722*data[offset+2];
+                             if (lum > settings.density * 2.5) code += dots[dy][dx];
+                          }
+                      }
+                      rowText += code > 0 ? String.fromCharCode(0x2800 + code) : " ";
+                   }
+                   ctx.fillText(rowText, 0, r * 4 * fSize);
+                }
+            } else {
+                for (let y = 0; y < rows; y++) {
+                    let rowText = "";
+                    for (let x = 0; x < cols; x++) {
+                       const offset = (y * cols + x) * 4;
+                       const r = data[offset], g = data[offset+1], b = data[offset+2];
+                       let lum = 0.2126*r + 0.7152*g + 0.0722*b;
+                       
+                       if (styleId === 'ascii') {
+                           if (settings.colorize) {
+                              const char = getAsciiChar(lum, settings.density);
+                              ctx.fillStyle = `rgb(${r},${g},${b})`;
+                              ctx.fillText(char, x * charWidth, y * fSize);
+                           } else {
+                              rowText += getAsciiChar(lum, settings.density);
+                           }
+                       } else if (styleId === 'matrix') {
+                           if (lum > settings.density * 2) {
+                              ctx.fillStyle = `rgb(0, ${Math.max(100, lum)}, 0)`;
+                              ctx.fillText(getMatrixChar(), x * charWidth, y * fSize);
+                           }
+                       }
+                    }
+                    if (styleId === 'ascii' && !settings.colorize) {
+                       ctx.fillText(rowText, 0, y * fSize);
+                    }
+                }
+            }
+        } else {
+            hctx.putImageData(new ImageData(new Uint8ClampedArray(data), cols, rows), 0, 0);
+            renderNonTextFilter(hctx, styleId, settings, cols, rows);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(hiddenCanvas, 0, 0, canvas.width, canvas.height);
+        }
     }
     
     if (useWebcam) {
@@ -745,15 +531,11 @@ export default function App() {
   return (
     <main 
       className="min-h-screen bg-deck text-bone flex flex-col"
-      style={{
-        "--color-accent": activePalette.fg,
-        "--bg-accent": activePalette.bg,
-      }}
+      style={{ "--color-accent": activePalette.fg, "--bg-accent": activePalette.bg }}
     >
       <div className="grid min-h-screen flex-1 grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside className="border-b border-bone/25 bg-black xl:border-b-0 xl:border-r">
-          <div className="flex h-full flex-col">
-            <div className="border-b border-bone/25 p-5">
+        <aside className="border-b border-bone/25 bg-black xl:border-b-0 xl:border-r flex flex-col h-screen overflow-hidden">
+            <div className="border-b border-bone/25 p-5 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] uppercase text-ghost">client side art machine</p>
@@ -763,7 +545,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 border-b border-bone/25">
+            <div className="grid grid-cols-2 border-b border-bone/25 flex-shrink-0">
               <button
                 className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
                 onClick={() => setUseWebcam(true)}
@@ -774,12 +556,7 @@ export default function App() {
                 className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
               >
                 <ImageIcon className="h-4 w-4" /> Upload
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(e) => handleFile(e.target.files?.[0])}
-                />
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
               </label>
             </div>
 
@@ -799,15 +576,11 @@ export default function App() {
               </div>
             </div>
 
-            <div className="border-t border-bone/25 bg-black p-3">
-              <button
-                onClick={randomize}
-                className="group flex w-full items-center justify-center gap-2 border border-bone/25 bg-black py-4 text-xs font-bold uppercase tracking-widest text-ghost transition-colors hover:border-volt hover:text-volt"
-              >
+            <div className="border-t border-bone/25 bg-black p-3 flex-shrink-0">
+              <button onClick={randomize} className="group flex w-full items-center justify-center gap-2 border border-bone/25 bg-black py-4 text-xs font-bold uppercase tracking-widest text-ghost transition-colors hover:border-volt hover:text-volt">
                 <Shuffle className="h-4 w-4" /> Randomize
               </button>
             </div>
-          </div>
         </aside>
 
         <section className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-deck p-8" ref={outputRef}>
@@ -823,19 +596,15 @@ export default function App() {
                 {ALL_STYLES.find((s) => s.id === styleId)?.name}
               </span>
             </div>
-            {toast && (
-              <span className="animate-pulse bg-bone px-2 py-1 text-[10px] font-bold uppercase text-black">
-                {toast}
-              </span>
-            )}
+            {toast && <span className="animate-pulse bg-bone px-2 py-1 text-[10px] font-bold uppercase text-black">{toast}</span>}
           </div>
           <div className="pointer-events-none absolute bottom-8 right-8 text-right text-[10px] text-ghost opacity-50">
-            <div>DSGN_SYS v1.0.1</div>
-            <div>[CMD+D] SAVE</div>
+            <div>DSGN_SYS v1.1.0</div>
+            <div>[AI ACCELERATED]</div>
           </div>
         </section>
 
-        <aside className="flex flex-col border-t border-bone/25 bg-black xl:border-l xl:border-t-0">
+        <aside className="flex flex-col border-t border-bone/25 bg-black xl:border-l xl:border-t-0 h-screen overflow-hidden">
           <div className="flex-1 overflow-y-auto p-5">
             <div className="grid gap-6">
               <div className="grid gap-2">
@@ -843,8 +612,7 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(PALETTES).map(([key, value]) => (
                     <button
-                      key={key}
-                      onClick={() => setPalette(key)}
+                      key={key} onClick={() => setPalette(key)}
                       className={`flex h-8 items-center justify-between border px-2 text-[10px] uppercase transition-colors ${palette === key ? "border-volt text-volt" : "border-bone/25 text-ghost hover:border-bone"}`}
                     >
                       <span>{key}</span>
@@ -858,13 +626,18 @@ export default function App() {
 
               <div className="grid gap-4">
                 <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Parameters</span>
+                
+                <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-3 hover:border-volt">
+                  <span className="text-[10px] uppercase font-bold text-ghost group-hover:text-volt">Isolate Subject</span>
+                  <input type="checkbox" checked={isolateSubject} onChange={(e) => setIsolateSubject(e.target.checked)} className="accent-volt" />
+                </label>
+
                 <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
                 <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
                 <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={200} />
                 <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={200} />
                 <Slider label="Grain" value={grain} setValue={setGrain} min={0} max={100} />
-                <Slider label="Bloom" value={bloom} setValue={setBloom} min={0} max={100} />
-                <Slider label="Chromatic" value={chromatic} setValue={setChromatic} min={0} max={100} />
+                
                 <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-2 hover:border-volt">
                   <span className="text-[10px] uppercase text-ghost group-hover:text-volt">Colorize Output</span>
                   <input type="checkbox" checked={colorize} onChange={(e) => setColorize(e.target.checked)} className="accent-volt" />
@@ -885,9 +658,9 @@ export default function App() {
             </div>
           </div>
 
-          <div className="h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-1 xl:border-b xl:border-t-0">
+          <div className="h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-shrink-0 xl:border-b xl:border-t-0">
             <span className="mb-2 block text-[10px] uppercase text-ghost">Cache Memory</span>
-            <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-auto xl:flex-col xl:overflow-y-auto">
+            <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-24">
               {history.length === 0 && (
                 <div className="flex h-full w-full items-center justify-center border border-dashed border-bone/25 p-4 text-center text-[10px] text-ghost">
                   NO SNAPS
@@ -898,11 +671,9 @@ export default function App() {
                   key={item.id}
                   onClick={() => {
                     const link = document.createElement("a");
-                    link.href = item.value;
-                    link.download = `glyph_dsgn-snap-${item.id}.png`;
-                    link.click();
+                    link.href = item.value; link.download = `glyph_dsgn-snap-${item.id}.png`; link.click();
                   }}
-                  className="group relative h-full w-24 flex-shrink-0 border border-bone/25 xl:h-24 xl:w-full"
+                  className="group relative h-full w-24 flex-shrink-0 border border-bone/25"
                 >
                   <img alt="" src={item.value} className="h-full w-full object-cover grayscale transition-all group-hover:grayscale-0" />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
