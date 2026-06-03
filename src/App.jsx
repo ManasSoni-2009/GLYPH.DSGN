@@ -691,161 +691,168 @@ export default function App() {
 
   return (
     <main 
-      className="min-h-screen bg-deck text-bone flex flex-col"
+      className="min-h-screen bg-deck text-bone flex flex-col xl:flex-row xl:h-screen xl:overflow-hidden"
       style={{ "--color-accent": activePalette.fg, "--bg-accent": activePalette.bg }}
     >
-      <div className="grid min-h-screen flex-1 grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside className="border-b border-bone/25 bg-black xl:border-b-0 xl:border-r flex flex-col h-screen overflow-hidden">
-            <div className="border-b border-bone/25 p-5 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase text-ghost">client side art machine</p>
-                  <h1 className="mt-2 text-2xl font-black uppercase tracking-normal">GLYPH_DSGN</h1>
-                </div>
-                <Sparkles className="h-5 w-5 text-volt" aria-hidden="true" />
-              </div>
-            </div>
+      {/* MOBILE HEADER */}
+      <div className="flex items-center justify-between border-b border-bone/25 bg-black p-4 xl:hidden shrink-0">
+        <div>
+          <h1 className="text-xl font-black uppercase tracking-normal">GLYPH_DSGN</h1>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={downloadPng} className="border border-bone/25 p-2 text-ghost hover:border-volt hover:text-volt"><Download className="h-4 w-4" /></button>
+          <button onClick={addHistory} className="border border-bone/25 p-2 text-ghost hover:border-volt hover:text-volt"><Camera className="h-4 w-4" /></button>
+        </div>
+      </div>
 
-            <div className="grid grid-cols-2 border-b border-bone/25 flex-shrink-0">
-              <button
-                className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
-                onClick={() => setUseWebcam(true)}
-              >
-                <Camera className="h-4 w-4" /> Live
-              </button>
-              <label
-                className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
-              >
-                <ImageIcon className="h-4 w-4" /> Upload
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
-              </label>
-            </div>
+      {/* CANVAS SECTION - Sticky on mobile */}
+      <section className="sticky top-0 z-20 flex h-[50vh] flex-col items-center justify-center border-b border-bone/25 bg-deck p-2 xl:order-2 xl:h-full xl:flex-1 xl:border-none xl:p-8" ref={outputRef}>
+        <video ref={videoRef} className="hidden" playsInline muted autoPlay />
+        <div className="relative flex h-full w-full items-center justify-center">
+          <canvas ref={canvasRef} className="max-h-full max-w-full object-contain shadow-xl" />
+        </div>
+        
+        <div className="pointer-events-none absolute bottom-4 left-4 flex flex-col gap-1 xl:bottom-8 xl:left-8">
+          <div className="flex gap-2">
+            <span className="bg-volt px-2 py-1 text-[10px] font-bold uppercase text-black">REC</span>
+            <span className="bg-black px-2 py-1 text-[10px] uppercase text-bone border border-bone/25">
+              {ALL_STYLES.find((s) => s.id === styleId)?.name}
+            </span>
+          </div>
+          {toast && <span className="animate-pulse bg-bone px-2 py-1 text-[10px] font-bold uppercase text-black">{toast}</span>}
+        </div>
+        <div className="pointer-events-none absolute bottom-4 right-4 text-right text-[10px] text-ghost opacity-50 xl:bottom-8 xl:right-8">
+          <div>DSGN_SYS v1.2.0</div>
+          <div>[AI ACCELERATED]</div>
+        </div>
+      </section>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              <div className="grid gap-2">
-                {ALL_STYLES.map((style) => (
+      {/* LEFT SIDEBAR - Styles */}
+      <aside className="flex flex-col bg-black xl:order-1 xl:w-[280px] xl:flex-shrink-0 xl:border-r xl:border-bone/25 xl:h-full">
+          <div className="hidden border-b border-bone/25 p-5 xl:block">
+            <p className="text-[10px] uppercase text-ghost">client side art machine</p>
+            <h1 className="mt-2 text-2xl font-black uppercase tracking-normal">GLYPH_DSGN</h1>
+          </div>
+
+          <div className="grid grid-cols-2 border-b border-bone/25">
+            <button
+              className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
+              onClick={() => setUseWebcam(true)}
+            >
+              <Camera className="h-4 w-4" /> Live
+            </button>
+            <label
+              className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
+            >
+              <ImageIcon className="h-4 w-4" /> Upload
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+            </label>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 xl:p-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1">
+              {ALL_STYLES.map((style) => (
+                <button
+                  key={style.id}
+                  className={`group grid grid-cols-[32px_1fr] xl:grid-cols-[42px_1fr] items-center border p-2 xl:p-3 text-left transition-colors duration-75 ${styleId === style.id ? "border-volt bg-volt text-black" : "border-bone/25 bg-black hover:border-bone"}`}
+                  onClick={() => setStyleId(style.id)}
+                  title={style.desc}
+                >
+                  <span className="flex h-6 w-6 xl:h-8 xl:w-8 items-center justify-center border border-current text-[10px]">{style.tag}</span>
+                  <span className="pl-2 xl:pl-3 text-[10px] xl:text-sm font-bold uppercase tracking-widest truncate">{style.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-bone/25 bg-black p-3 xl:mt-auto">
+            <button onClick={randomize} className="group flex w-full items-center justify-center gap-2 border border-bone/25 bg-black py-4 text-xs font-bold uppercase tracking-widest text-ghost transition-colors hover:border-volt hover:text-volt">
+              <Shuffle className="h-4 w-4" /> Randomize
+            </button>
+          </div>
+      </aside>
+
+      {/* RIGHT SIDEBAR - Parameters */}
+      <aside className="flex flex-col bg-black xl:order-3 xl:w-[320px] xl:flex-shrink-0 xl:border-l xl:border-bone/25 xl:h-full">
+        <div className="flex-1 overflow-y-auto p-4 xl:p-5">
+          <div className="grid gap-6">
+            <div className="grid gap-2">
+              <span className="text-[10px] uppercase text-ghost">Palette</span>
+              <div className="grid grid-cols-3 xl:grid-cols-2 gap-2">
+                {Object.entries(PALETTES).map(([key, value]) => (
                   <button
-                    key={style.id}
-                    className={`group grid grid-cols-[42px_1fr] items-center border p-3 text-left transition-colors duration-75 ${styleId === style.id ? "border-volt bg-volt text-black" : "border-bone/25 bg-black hover:border-bone"}`}
-                    onClick={() => setStyleId(style.id)}
-                    title={style.desc}
+                    key={key} onClick={() => setPalette(key)}
+                    className={`flex h-8 items-center justify-between border px-2 text-[10px] uppercase transition-colors ${palette === key ? "border-volt text-volt" : "border-bone/25 text-ghost hover:border-bone"}`}
                   >
-                    <span className="flex h-8 w-8 items-center justify-center border border-current text-[10px]">{style.tag}</span>
-                    <span className="pl-3 text-sm font-bold uppercase tracking-widest">{style.name}</span>
+                    <span className="truncate pr-1">{key}</span>
+                    <div className="flex h-4 w-4 shrink-0 border border-current" style={{ backgroundColor: value.bg }}>
+                      <div className="h-full w-1/2" style={{ backgroundColor: value.fg }} />
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="border-t border-bone/25 bg-black p-3 flex-shrink-0">
-              <button onClick={randomize} className="group flex w-full items-center justify-center gap-2 border border-bone/25 bg-black py-4 text-xs font-bold uppercase tracking-widest text-ghost transition-colors hover:border-volt hover:text-volt">
-                <Shuffle className="h-4 w-4" /> Randomize
-              </button>
+            <div className="grid gap-4">
+              <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Parameters</span>
+              
+              <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-3 hover:border-volt">
+                <span className="text-[10px] uppercase font-bold text-ghost group-hover:text-volt">Isolate Subject</span>
+                <input type="checkbox" checked={isolateSubject} onChange={(e) => setIsolateSubject(e.target.checked)} className="accent-volt" />
+              </label>
+
+              <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
+              <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
+              <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={200} />
+              <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={200} />
+              <Slider label="Grain" value={grain} setValue={setGrain} min={0} max={100} />
+              
+              <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-2 hover:border-volt">
+                <span className="text-[10px] uppercase text-ghost group-hover:text-volt">Colorize Output</span>
+                <input type="checkbox" checked={colorize} onChange={(e) => setColorize(e.target.checked)} className="accent-volt" />
+              </label>
             </div>
-        </aside>
 
-        <section className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-deck p-8" ref={outputRef}>
-          <video ref={videoRef} className="hidden" playsInline muted autoPlay />
-          <div className="relative flex h-full w-full items-center justify-center">
-            <canvas ref={canvasRef} className="max-h-full max-w-full object-contain shadow-2xl" />
-          </div>
-
-          <div className="pointer-events-none absolute bottom-8 left-8 flex flex-col gap-1">
-            <div className="flex gap-2">
-              <span className="bg-volt px-2 py-1 text-[10px] font-bold uppercase text-black">REC</span>
-              <span className="bg-black px-2 py-1 text-[10px] uppercase text-bone border border-bone/25">
-                {ALL_STYLES.find((s) => s.id === styleId)?.name}
-              </span>
-            </div>
-            {toast && <span className="animate-pulse bg-bone px-2 py-1 text-[10px] font-bold uppercase text-black">{toast}</span>}
-          </div>
-          <div className="pointer-events-none absolute bottom-8 right-8 text-right text-[10px] text-ghost opacity-50">
-            <div>DSGN_SYS v1.1.0</div>
-            <div>[AI ACCELERATED]</div>
-          </div>
-        </section>
-
-        <aside className="flex flex-col border-t border-bone/25 bg-black xl:border-l xl:border-t-0 h-screen overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-5">
-            <div className="grid gap-6">
-              <div className="grid gap-2">
-                <span className="text-[10px] uppercase text-ghost">Palette</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(PALETTES).map(([key, value]) => (
-                    <button
-                      key={key} onClick={() => setPalette(key)}
-                      className={`flex h-8 items-center justify-between border px-2 text-[10px] uppercase transition-colors ${palette === key ? "border-volt text-volt" : "border-bone/25 text-ghost hover:border-bone"}`}
-                    >
-                      <span>{key}</span>
-                      <div className="flex h-4 w-4 border border-current" style={{ backgroundColor: value.bg }}>
-                        <div className="h-full w-1/2" style={{ backgroundColor: value.fg }} />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-4">
-                <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Parameters</span>
-                
-                <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-3 hover:border-volt">
-                  <span className="text-[10px] uppercase font-bold text-ghost group-hover:text-volt">Isolate Subject</span>
-                  <input type="checkbox" checked={isolateSubject} onChange={(e) => setIsolateSubject(e.target.checked)} className="accent-volt" />
-                </label>
-
-                <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
-                <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
-                <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={200} />
-                <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={200} />
-                <Slider label="Grain" value={grain} setValue={setGrain} min={0} max={100} />
-                
-                <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-2 hover:border-volt">
-                  <span className="text-[10px] uppercase text-ghost group-hover:text-volt">Colorize Output</span>
-                  <input type="checkbox" checked={colorize} onChange={(e) => setColorize(e.target.checked)} className="accent-volt" />
-                </label>
-              </div>
-
-              <div className="grid gap-2">
-                <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Export</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={downloadPng} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
-                    <Download className="h-3 w-3" /> PNG
-                  </button>
-                  <button onClick={addHistory} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
-                    <Camera className="h-3 w-3" /> SNAP
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-shrink-0 xl:border-b xl:border-t-0">
-            <span className="mb-2 block text-[10px] uppercase text-ghost">Cache Memory</span>
-            <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-24">
-              {history.length === 0 && (
-                <div className="flex h-full w-full items-center justify-center border border-dashed border-bone/25 p-4 text-center text-[10px] text-ghost">
-                  NO SNAPS
-                </div>
-              )}
-              {history.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    const link = document.createElement("a");
-                    link.href = item.value; link.download = `glyph_dsgn-snap-${item.id}.png`; link.click();
-                  }}
-                  className="group relative h-full w-24 flex-shrink-0 border border-bone/25"
-                >
-                  <img alt="" src={item.value} className="h-full w-full object-cover grayscale transition-all group-hover:grayscale-0" />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Download className="h-4 w-4 text-volt" />
-                  </div>
+            <div className="hidden xl:grid gap-2">
+              <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Export</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={downloadPng} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
+                  <Download className="h-3 w-3" /> PNG
                 </button>
-              ))}
+                <button onClick={addHistory} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
+                  <Camera className="h-3 w-3" /> SNAP
+                </button>
+              </div>
             </div>
           </div>
-        </aside>
-      </div>
+        </div>
+
+        <div className="hidden xl:block h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-shrink-0 xl:border-b xl:border-t-0">
+          <span className="mb-2 block text-[10px] uppercase text-ghost">Cache Memory</span>
+          <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-24">
+            {history.length === 0 && (
+              <div className="flex h-full w-full items-center justify-center border border-dashed border-bone/25 p-4 text-center text-[10px] text-ghost">
+                NO SNAPS
+              </div>
+            )}
+            {history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.href = item.value; link.download = `glyph_dsgn-snap-${item.id}.png`; link.click();
+                }}
+                className="group relative h-full w-24 flex-shrink-0 border border-bone/25"
+              >
+                <img alt="" src={item.value} className="h-full w-full object-cover grayscale transition-all group-hover:grayscale-0" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Download className="h-4 w-4 text-volt" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </aside>
     </main>
   );
 }
