@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImageSegmenter, FilesetResolver } from "@mediapipe/tasks-vision";
 import {
-  Aperture, Camera, ChevronDown, Clipboard, Download, ImageIcon, Shuffle, Sparkles, Upload, ShieldCheck, X
+  Aperture, Camera, ChevronDown, Clipboard, Download, ImageIcon, Shuffle, Sparkles, Upload, ShieldCheck, X, RefreshCcw
 } from "lucide-react";
 
 const ALL_STYLES = [
@@ -371,6 +371,7 @@ export default function App() {
   const [sharpness, setSharpness] = useState(50);
   const [colorize, setColorize] = useState(false);
   const [useWebcam, setUseWebcam] = useState(true);
+  const [facingMode, setFacingMode] = useState("user");
   const [isolateSubject, setIsolateSubject] = useState(true);
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState([]);
@@ -390,8 +391,8 @@ export default function App() {
   const activePalette = PALETTES[palette];
 
   const settings = useMemo(() => ({
-    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, depth, sharpness, palette, colorize, isolateSubject
-  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, depth, sharpness, palette, colorize, isolateSubject]);
+    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, depth, sharpness, palette, colorize, isolateSubject, facingMode
+  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, depth, sharpness, palette, colorize, isolateSubject, facingMode]);
 
   const flash = useCallback((message) => {
     setToast(message);
@@ -460,7 +461,7 @@ export default function App() {
       }
       return;
     }
-    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } })
+    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode } })
       .then((stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -478,7 +479,7 @@ export default function App() {
         videoRef.current.srcObject.getTracks().forEach(t => t.stop());
       }
     };
-  }, [useWebcam, flash]);
+  }, [useWebcam, facingMode, flash]);
 
   const drawFrame = useCallback(() => {
     if (!canvasRef.current) return;
@@ -568,7 +569,7 @@ export default function App() {
         
         // 2. Draw downsampled source
         hctx.save();
-        if (useWebcam) {
+        if (useWebcam && settings.facingMode === "user") {
             hctx.translate(cols, 0);
             hctx.scale(-1, 1);
         }
@@ -578,7 +579,7 @@ export default function App() {
         // 3. Mask out background
         if (settings.isolateSubject && maskCanvasRef.current.width > 0) {
             hctx.save();
-            if (useWebcam) { hctx.translate(cols, 0); hctx.scale(-1, 1); }
+            if (useWebcam && settings.facingMode === "user") { hctx.translate(cols, 0); hctx.scale(-1, 1); }
             hctx.globalCompositeOperation = "destination-in";
             hctx.drawImage(maskCanvasRef.current, 0, 0, cols, rows);
             hctx.globalCompositeOperation = "destination-over";
@@ -821,15 +822,24 @@ export default function App() {
             <h1 className="mt-2 text-2xl font-black uppercase tracking-normal">GLYPH_DSGN</h1>
           </div>
 
-          <div className="grid grid-cols-2 border-b border-bone/25">
+          <div className="grid grid-cols-3 border-b border-bone/25">
             <button
-              className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
+              className={`flex items-center justify-center gap-2 border-r border-bone/25 px-2 py-4 text-[10px] sm:text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
               onClick={() => setUseWebcam(true)}
             >
               <Camera className="h-4 w-4" /> Live
             </button>
+            <button
+              className="flex items-center justify-center gap-2 border-r border-bone/25 px-2 py-4 text-[10px] sm:text-xs uppercase transition-colors duration-75 hover:bg-white/10"
+              onClick={() => {
+                setUseWebcam(true);
+                setFacingMode(prev => prev === "user" ? "environment" : "user");
+              }}
+            >
+              <RefreshCcw className="h-4 w-4" /> Flip
+            </button>
             <label
-              className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
+              className={`flex cursor-pointer items-center justify-center gap-2 px-2 py-4 text-[10px] sm:text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
             >
               <ImageIcon className="h-4 w-4" /> Upload
               <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
