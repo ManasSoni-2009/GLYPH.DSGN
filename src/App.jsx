@@ -2,51 +2,36 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import {
   Aperture,
-  Braces,
+  Camera,
   ChevronDown,
   Clipboard,
   Download,
   Image as ImageIcon,
-  Keyboard,
-  PanelRightOpen,
   Shuffle,
   Sparkles,
-  Type,
   Upload,
 } from "lucide-react";
 
-const TEXT_STYLES = [
-  { id: "ascii", name: "ASCII", tag: "01", desc: "Figlet-ish mono banner forms." },
-  { id: "ansi", name: "ANSI", tag: "02", desc: "BBS terminal color and glow." },
-  { id: "petscii", name: "PETSCII", tag: "03", desc: "C64 palette and reverse video." },
-  { id: "braille", name: "BRAILLE", tag: "04", desc: "Unicode Braille cell encoding." },
-  { id: "typeblock", name: "TYPEBLOCK", tag: "05", desc: "Heavy block-character typography." },
-  { id: "morse", name: "MORSE", tag: "06", desc: "Visual dot and dash signal tape." },
-  { id: "zalgo", name: "ZALGO", tag: "07", desc: "Corrupted combining marks." },
-  { id: "matrix", name: "MATRIX", tag: "08", desc: "Falling code animation." },
-  { id: "kaomoji", name: "KAOMOJI", tag: "09", desc: "Internet face mosaic banner." },
-  { id: "shadow3d", name: "SHADOW 3D", tag: "10", desc: "Layered extrusion typography." },
+const ALL_STYLES = [
+  { id: "ascii", name: "ASCII", tag: "01", desc: "Brightness mapped glyph field." },
+  { id: "braille", name: "BRAILLE", tag: "02", desc: "Unicode Braille cell encoding." },
+  { id: "matrix", name: "MATRIX", tag: "03", desc: "Falling code animation from feed." },
+  { id: "crosshatch", name: "CROSSHATCH", tag: "04", desc: "Directional lines by brightness." },
+  { id: "pixelsort", name: "PIXEL SORT", tag: "05", desc: "Gravity threshold sorting." },
+  { id: "sobel", name: "EDGE TRACE", tag: "06", desc: "Sobel operator edge detection." },
+  { id: "pixel", name: "8-BIT", tag: "07", desc: "Nearest-neighbor palette posterize." },
+  { id: "glitch", name: "GLITCH", tag: "08", desc: "RGB split, bands, scan corruption." },
+  { id: "halftone", name: "HALFTONE", tag: "09", desc: "Newspaper dot simulation." },
+  { id: "lowpoly", name: "LOW POLY", tag: "10", desc: "Triangular code-art facets." },
+  { id: "vignette", name: "VIGNETTE", tag: "11", desc: "Deep lens shading and borders." },
+  { id: "glass", name: "GLASS", tag: "12", desc: "Cell shards and lead borders." },
+  { id: "comic", name: "COMIC", tag: "13", desc: "Flat color, ink edges, Ben-Day." },
+  { id: "film", name: "35MM", tag: "14", desc: "Grain, halation, analog grade." },
+  { id: "dream", name: "DREAM", tag: "15", desc: "Prism bloom and diffusion." },
+  { id: "print", name: "LO-FI PRINT", tag: "16", desc: "Dust, scratches, light leaks." },
+  { id: "kinetic", name: "KINETIC", tag: "17", desc: "Motion trails and zoom burst." },
+  { id: "dither", name: "DITHER", tag: "18", desc: "Atkinson/Floyd two-tone grit." },
 ];
-
-const IMAGE_STYLES = [
-  { id: "ascii-photo", name: "ASCII PHOTO", tag: "11", desc: "Brightness mapped glyph field." },
-  { id: "pixel", name: "8-BIT", tag: "12", desc: "Nearest-neighbor palette posterize." },
-  { id: "glitch", name: "GLITCH", tag: "13", desc: "RGB split, bands, scan corruption." },
-  { id: "halftone", name: "HALFTONE", tag: "14", desc: "Newspaper dot simulation." },
-  { id: "lowpoly", name: "LOW POLY", tag: "15", desc: "Triangular code-art facets." },
-  { id: "paint", name: "OIL/WATER", tag: "16", desc: "Soft smoothing and edge lift." },
-  { id: "stitch", name: "STITCH", tag: "17", desc: "Embroidery cross grid." },
-  { id: "thermal", name: "THERMAL", tag: "18", desc: "False-color heat map." },
-  { id: "glass", name: "GLASS", tag: "19", desc: "Cell shards and lead borders." },
-  { id: "comic", name: "COMIC", tag: "20", desc: "Flat color, ink edges, Ben-Day." },
-  { id: "film", name: "35MM", tag: "21", desc: "Grain, halation, analog grade." },
-  { id: "dream", name: "DREAM", tag: "22", desc: "Prism bloom and diffusion." },
-  { id: "print", name: "LO-FI PRINT", tag: "23", desc: "Dust, scratches, light leaks." },
-  { id: "kinetic", name: "KINETIC", tag: "24", desc: "Motion trails and zoom burst." },
-  { id: "dither", name: "DITHER", tag: "25", desc: "Atkinson/Floyd two-tone grit." },
-];
-
-const ALL_STYLES = [...TEXT_STYLES, ...IMAGE_STYLES];
 
 const PALETTES = {
   green: { label: "Terminal Green", fg: "#00ff66", bg: "#000000", alt: "#083b1c" },
@@ -57,58 +42,8 @@ const PALETTES = {
   solar: { label: "Solarized", fg: "#93a1a1", bg: "#002b36", alt: "#b58900" },
 };
 
-const MORSE = {
-  a: ".-", b: "-...", c: "-.-.", d: "-..", e: ".", f: "..-.", g: "--.", h: "....", i: "..", j: ".---",
-  k: "-.-", l: ".-..", m: "--", n: "-.", o: "---", p: ".--.", q: "--.-", r: ".-.", s: "...",
-  t: "-", u: "..-", v: "...-", w: ".--", x: "-..-", y: "-.--", z: "--..",
-  0: "-----", 1: ".----", 2: "..---", 3: "...--", 4: "....-", 5: ".....",
-  6: "-....", 7: "--...", 8: "---..", 9: "----.",
-};
-
-const BLOCK_FONT = {
-  A: [" ██ ", "█  █", "████", "█  █", "█  █"], B: ["███ ", "█  █", "███ ", "█  █", "███ "],
-  C: [" ███", "█   ", "█   ", "█   ", " ███"], D: ["███ ", "█  █", "█  █", "█  █", "███ "],
-  E: ["████", "█   ", "███ ", "█   ", "████"], F: ["████", "█   ", "███ ", "█   ", "█   "],
-  G: [" ███", "█   ", "█ ██", "█  █", " ███"], H: ["█  █", "█  █", "████", "█  █", "█  █"],
-  I: ["███", " █ ", " █ ", " █ ", "███"], J: ["  ██", "   █", "   █", "█  █", " ██ "],
-  K: ["█  █", "█ █ ", "██  ", "█ █ ", "█  █"], L: ["█   ", "█   ", "█   ", "█   ", "████"],
-  M: ["█  █", "████", "████", "█  █", "█  █"], N: ["█  █", "██ █", "█ ██", "█  █", "█  █"],
-  O: [" ██ ", "█  █", "█  █", "█  █", " ██ "], P: ["███ ", "█  █", "███ ", "█   ", "█   "],
-  Q: [" ██ ", "█  █", "█  █", "█ ██", " ███"], R: ["███ ", "█  █", "███ ", "█ █ ", "█  █"],
-  S: [" ███", "█   ", " ██ ", "   █", "███ "], T: ["████", " ██ ", " ██ ", " ██ ", " ██ "],
-  U: ["█  █", "█  █", "█  █", "█  █", " ██ "], V: ["█  █", "█  █", "█  █", " ██ ", " ██ "],
-  W: ["█  █", "█  █", "████", "████", "█  █"], X: ["█  █", " ██ ", " ██ ", " ██ ", "█  █"],
-  Y: ["█  █", " ██ ", " ██ ", " ██ ", " ██ "], Z: ["████", "  █ ", " ██ ", "█   ", "████"],
-  "0": [" ██ ", "█  █", "█  █", "█  █", " ██ "], "1": [" ██", "  █", "  █", "  █", "████"],
-  "2": ["███ ", "   █", " ██ ", "█   ", "████"], "3": ["███ ", "   █", " ██ ", "   █", "███ "],
-  "4": ["█  █", "█  █", "████", "   █", "   █"], "5": ["████", "█   ", "███ ", "   █", "███ "],
-  "6": [" ███", "█   ", "███ ", "█  █", " ██ "], "7": ["████", "   █", "  █ ", " █  ", "█   "],
-  "8": [" ██ ", "█  █", " ██ ", "█  █", " ██ "], "9": [" ██ ", "█  █", " ███", "   █", "███ "],
-  " ": ["    ", "    ", "    ", "    ", "    "],
-};
-
 function clamp(value, min = 0, max = 255) {
   return Math.max(min, Math.min(max, value));
-}
-
-function downloadBlob(blob, filename) {
-  const href = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(href);
-}
-
-function bannerText(text) {
-  const lines = ["", "", "", "", ""];
-  String(text || "GLYPH").toUpperCase().slice(0, 24).split("").forEach((char) => {
-    const glyph = BLOCK_FONT[char] || BLOCK_FONT[" "];
-    glyph.forEach((line, index) => {
-      lines[index] += `${line}  `;
-    });
-  });
-  return lines.join("\n");
 }
 
 function seededNoise(seed) {
@@ -116,96 +51,17 @@ function seededNoise(seed) {
   return x - Math.floor(x);
 }
 
-function textToBraille(text) {
-  const bytes = Array.from(new TextEncoder().encode(text || "GLYPH_DSGN"));
-  const dots = [1, 2, 4, 64, 8, 16, 32, 128];
-  return bytes.map((byte, index) => {
-    let code = 0;
-    dots.forEach((dot, bit) => {
-      if ((byte >> bit) & 1) code += dot;
-    });
-    return String.fromCharCode(0x2800 + code) + ((index + 1) % 24 === 0 ? "\n" : "");
-  }).join("");
-}
-
-function zalgoText(text, density) {
-  const marks = ["\u0301", "\u0308", "\u0334", "\u035c", "\u036f", "\u032f", "\u031a", "\u0337"];
-  return Array.from(text || "SIGNAL LOST").map((char, i) => {
-    const count = Math.max(1, Math.round(density / 14));
-    return char + Array.from({ length: count }, (_, j) => marks[(i + j) % marks.length]).join("");
-  }).join("");
-}
-
-function createTextArt(style, text, settings) {
-  const source = text.trim() || "GLYPH_DSGN";
-  const banner = bannerText(source);
-
-  // Style 01: Classic ASCII Art.
-  if (style === "ascii") return banner.replaceAll("█", "#");
-
-  // Style 02: ANSI Art.
-  if (style === "ansi") return `\u001b[38;5;46m${banner}\u001b[0m\n\n[ BBS TERMINAL // 9600 BAUD // GLYPH_DSGN ]`;
-
-  // Style 03: PETSCII Art.
-  if (style === "petscii") return banner.replaceAll("█", "▓").replaceAll(" ", "·");
-
-  // Style 04: Braille Art.
-  if (style === "braille") return textToBraille(source.repeat(8));
-
-  // Style 05: Block/Typeblock Art.
-  if (style === "typeblock") return banner.replaceAll("█", "▓").replaceAll(" ", "░");
-
-  // Style 06: Morse Code Visual.
-  if (style === "morse") {
-    return source.toLowerCase().split("").map((char) => {
-      if (char === " ") return "     /     ";
-      return (MORSE[char] || "·").replaceAll(".", "●").replaceAll("-", "━");
-    }).join("   ");
-  }
-
-  // Style 07: Zalgo/Glitch Text.
-  if (style === "zalgo") return zalgoText(source, settings.density);
-
-  // Style 08: Matrix Rain Text.
-  if (style === "matrix") return Array.from({ length: 16 }, (_, row) => {
-    return Array.from({ length: 52 }, (_, col) => source[(row + col) % source.length] || "0").join("");
-  }).join("\n");
-
-  // Style 09: Emoticon/Kaomoji Art.
-  if (style === "kaomoji") {
-    const faces = ["(._.)", "(^_^)", "(o_o)", "(-_-)", "(>_<)", "(0_0)"];
-    return banner.replace(/█/g, (_, i) => faces[i % faces.length]).replace(/ {2,}/g, "  ");
-  }
-
-  // Style 10: Shadow/3D Extrusion.
-  return [
-    banner.replaceAll("█", "▓"),
-    banner.split("\n").map((line) => `  ${line.replaceAll("█", "▒")}`).join("\n"),
-    banner.split("\n").map((line) => `    ${line.replaceAll("█", "░")}`).join("\n"),
-  ].join("\n");
-}
-
-function drawBaseImage(ctx, img, maxSize = 940) {
-  const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
-  const width = Math.max(1, Math.round(img.width * ratio));
-  const height = Math.max(1, Math.round(img.height * ratio));
-  ctx.canvas.width = width;
-  ctx.canvas.height = height;
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(img, 0, 0, width, height);
-  return { width, height };
-}
-
-function mutatePixels(ctx, fn) {
-  const { width, height } = ctx.canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) fn(data, i, i / 4, width, height);
-  ctx.putImageData(imageData, 0, 0);
-}
-
 function brightness(data, i) {
   return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
 }
 
 function paletteColor(value, palette) {
@@ -219,20 +75,20 @@ function paletteColor(value, palette) {
   ];
 }
 
-function hexToRgb(hex) {
-  const clean = hex.replace("#", "");
-  return [
-    parseInt(clean.slice(0, 2), 16),
-    parseInt(clean.slice(2, 4), 16),
-    parseInt(clean.slice(4, 6), 16),
-  ];
-}
-
 function posterizeChannel(value, steps) {
   return Math.round(Math.round(value / (255 / (steps - 1))) * (255 / (steps - 1)));
 }
 
+function mutatePixels(ctx, fn) {
+  const { width, height } = ctx.canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) fn(data, i, i / 4, width, height);
+  ctx.putImageData(imageData, 0, 0);
+}
+
 function addGrain(ctx, amount, colored = false) {
+  if(amount <= 0) return;
   mutatePixels(ctx, (data, i, p) => {
     const n = (seededNoise(p + amount) - 0.5) * amount;
     data[i] = clamp(data[i] + n * (colored ? 1.35 : 1));
@@ -241,25 +97,68 @@ function addGrain(ctx, amount, colored = false) {
   });
 }
 
-function drawAsciiPhoto(ctx, img, settings) {
-  // Style 11: ASCII Photo Conversion.
+function drawBaseImage(ctx, img, settings, maxSize = 800) {
+  const iw = img.videoWidth || img.width;
+  const ih = img.videoHeight || img.height;
+  const ratio = Math.min(maxSize / iw, maxSize / ih, 1);
+  const width = Math.max(1, Math.round(iw * ratio));
+  const height = Math.max(1, Math.round(ih * ratio));
+  
+  if (ctx.canvas.width !== width || ctx.canvas.height !== height) {
+    ctx.canvas.width = width;
+    ctx.canvas.height = height;
+  }
+  
+  ctx.imageSmoothingEnabled = true;
+  if (img.videoWidth) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, -width, 0, width, height);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, 0, 0, width, height);
+  }
+
+  if (settings.brightness !== 100 || settings.contrast !== 100) {
+    mutatePixels(ctx, (data, i) => {
+      for (let c = 0; c < 3; c++) {
+        let v = data[i + c];
+        v = v * (settings.brightness / 100);
+        v = ((v / 255 - 0.5) * (settings.contrast / 100) + 0.5) * 255;
+        data[i + c] = clamp(v);
+      }
+    });
+  }
+
+  return { width, height };
+}
+
+function downloadBlob(blob, filename) {
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
+// ==================== ART STYLES ====================
+
+function drawAscii(ctx, img, settings) {
   const chars = " .'`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-  const width = 112;
-  const scale = width / img.width;
-  const height = Math.max(24, Math.round(img.height * scale * 0.48));
-  const tmp = document.createElement("canvas");
-  tmp.width = width;
-  tmp.height = height;
-  const tctx = tmp.getContext("2d", { willReadFrequently: true });
-  tctx.drawImage(img, 0, 0, width, height);
-  const data = tctx.getImageData(0, 0, width, height).data;
-  ctx.canvas.width = width * 8;
-  ctx.canvas.height = height * 12;
+  const { width, height } = drawBaseImage(ctx, img, settings, 200);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  
+  const fSize = settings.fontSize;
+  ctx.canvas.width = width * (fSize * 0.6);
+  ctx.canvas.height = height * fSize;
   const palette = PALETTES[settings.palette];
+  
   ctx.fillStyle = palette.bg;
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.font = `${settings.density < 45 ? 11 : 9}px JetBrains Mono, monospace`;
+  ctx.font = `${fSize}px JetBrains Mono, monospace`;
   ctx.textBaseline = "top";
+  
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = (y * width + x) * 4;
@@ -267,14 +166,175 @@ function drawAsciiPhoto(ctx, img, settings) {
       const char = chars[Math.floor((b / 255) * (chars.length - 1))];
       const [r, g, bl] = paletteColor(settings.colorize ? b : 255 - b, palette);
       ctx.fillStyle = settings.colorize ? `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})` : `rgb(${r}, ${g}, ${bl})`;
-      ctx.fillText(char, x * 8, y * 12);
+      ctx.fillText(char, x * (fSize * 0.6), y * fSize);
     }
   }
 }
 
+function drawBraille(ctx, img, settings) {
+  const { width, height } = drawBaseImage(ctx, img, settings, 400);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  
+  const fSize = Math.max(8, settings.fontSize);
+  const cols = Math.floor(width / 2);
+  const rows = Math.floor(height / 4);
+  
+  ctx.canvas.width = cols * (fSize * 0.6);
+  ctx.canvas.height = rows * fSize;
+  const palette = PALETTES[settings.palette];
+  
+  ctx.fillStyle = palette.bg;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.font = `${fSize}px JetBrains Mono, monospace`;
+  ctx.textBaseline = "top";
+  ctx.fillStyle = palette.fg;
+  
+  const thresh = settings.density * 2.5;
+  const dots = [[1, 8], [2, 16], [4, 32], [64, 128]];
+  
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let code = 0;
+      for (let dy = 0; dy < 4; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const x = c * 2 + dx;
+          const y = r * 4 + dy;
+          const i = (y * width + x) * 4;
+          if (brightness(data, i) > thresh) {
+            code += dots[dy][dx];
+          }
+        }
+      }
+      if (code > 0) {
+        ctx.fillText(String.fromCharCode(0x2800 + code), c * (fSize * 0.6), r * fSize);
+      }
+    }
+  }
+}
+
+function drawMatrix(ctx, img, settings) {
+  const chars = "ｦｧｨｩｪｫｬｭｮｯｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ";
+  const { width, height } = drawBaseImage(ctx, img, settings, 200);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  
+  const fSize = settings.fontSize;
+  ctx.canvas.width = width * (fSize * 0.6);
+  ctx.canvas.height = height * fSize;
+  
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.font = `${fSize}px JetBrains Mono, monospace`;
+  ctx.textBaseline = "top";
+  
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4;
+      const b = brightness(data, i);
+      if (b > settings.density * 2) {
+        const char = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillStyle = `rgb(0, ${b}, 0)`;
+        ctx.fillText(char, x * (fSize * 0.6), y * fSize);
+      }
+    }
+  }
+}
+
+function drawCrosshatch(ctx, img, settings) {
+  const { width, height } = drawBaseImage(ctx, img, settings);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  ctx.fillStyle = PALETTES[settings.palette].bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = PALETTES[settings.palette].fg;
+  ctx.lineWidth = 1;
+  const step = Math.max(3, Math.round(settings.fontSize / 2));
+  
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const i = (y * width + x) * 4;
+      const b = brightness(data, i);
+      ctx.beginPath();
+      if (b < 200) { ctx.moveTo(x, y); ctx.lineTo(x + step, y + step); }
+      if (b < 150) { ctx.moveTo(x + step, y); ctx.lineTo(x, y + step); }
+      if (b < 100) { ctx.moveTo(x, y + step / 2); ctx.lineTo(x + step, y + step / 2); }
+      if (b < 50)  { ctx.moveTo(x + step / 2, y); ctx.lineTo(x + step / 2, y + step); }
+      ctx.stroke();
+    }
+  }
+}
+
+function drawPixelSort(ctx, img, settings) {
+  const { width, height } = drawBaseImage(ctx, img, settings, 400); // lower res for perf
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+  const threshold = settings.density * 2.5;
+  
+  for (let x = 0; x < width; x++) {
+    let col = [];
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      col.push({ r: data[i], g: data[i+1], b: data[i+2], a: data[i+3], lum: brightness(data, i) });
+    }
+    
+    let start = -1;
+    for (let y = 0; y <= height; y++) {
+      if (y < height && col[y].lum > threshold) {
+        if (start === -1) start = y;
+      } else {
+        if (start !== -1) {
+          const chunk = col.slice(start, y);
+          chunk.sort((a, b) => a.lum - b.lum);
+          for (let k = 0; k < chunk.length; k++) col[start + k] = chunk[k];
+          start = -1;
+        }
+      }
+    }
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      data[i] = col[y].r; data[i+1] = col[y].g; data[i+2] = col[y].b; data[i+3] = col[y].a;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function drawSobel(ctx, img, settings) {
+  const { width, height } = drawBaseImage(ctx, img, settings, 600);
+  const source = ctx.getImageData(0, 0, width, height).data;
+  const target = ctx.createImageData(width, height);
+  const tdata = target.data;
+  const kX = [-1,0,1, -2,0,2, -1,0,1];
+  const kY = [-1,-2,-1, 0,0,0, 1,2,1];
+  
+  for(let y=1; y<height-1; y++) {
+    for(let x=1; x<width-1; x++) {
+      let px=0, py=0;
+      for(let ky=-1; ky<=1; ky++) {
+        for(let kx=-1; kx<=1; kx++) {
+          const idx = ((y+ky)*width + (x+kx))*4;
+          const val = brightness(source, idx);
+          const kIdx = (ky+1)*3 + (kx+1);
+          px += val * kX[kIdx];
+          py += val * kY[kIdx];
+        }
+      }
+      const mag = Math.min(255, Math.sqrt(px*px + py*py) * (settings.density/50));
+      const i = (y*width + x)*4;
+      tdata[i] = mag; tdata[i+1] = mag; tdata[i+2] = mag; tdata[i+3] = 255;
+    }
+  }
+  ctx.putImageData(target, 0, 0);
+}
+
+function drawVignette(ctx, img, settings) {
+  const { width, height } = drawBaseImage(ctx, img, settings);
+  const grad = ctx.createRadialGradient(width/2, height/2, width * (settings.bloom/200), width/2, height/2, width * 0.8);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.85)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+}
+
 function drawPixel(ctx, img, settings) {
-  // Style 12: Pixel Art / 8-bit Posterize.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   const block = Math.max(5, Math.round(settings.density / 6));
   const tmp = document.createElement("canvas");
   tmp.width = Math.max(1, Math.round(width / block));
@@ -293,8 +353,7 @@ function drawPixel(ctx, img, settings) {
 }
 
 function drawGlitch(ctx, img, settings) {
-  // Style 13: Algorithmic Glitch.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   const source = ctx.getImageData(0, 0, width, height);
   const data = source.data;
   const copy = new Uint8ClampedArray(data);
@@ -320,8 +379,7 @@ function drawGlitch(ctx, img, settings) {
 }
 
 function drawHalftone(ctx, img, settings) {
-  // Style 14: Halftone / Newspaper Print.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   const data = ctx.getImageData(0, 0, width, height).data;
   const step = Math.max(6, Math.round(settings.density / 5));
   ctx.fillStyle = "#f5f2e8";
@@ -340,8 +398,7 @@ function drawHalftone(ctx, img, settings) {
 }
 
 function drawLowPoly(ctx, img, settings) {
-  // Style 15: Generative/Code Art.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   const data = ctx.getImageData(0, 0, width, height).data;
   const cell = Math.max(24, Math.round(92 - settings.density));
   for (let y = 0; y < height; y += cell) {
@@ -365,62 +422,8 @@ function drawLowPoly(ctx, img, settings) {
   }
 }
 
-function drawPaint(ctx, img, settings) {
-  // Style 16: Watercolor / Oil Paint.
-  drawBaseImage(ctx, img);
-  ctx.filter = `blur(${Math.max(1, settings.bloom / 32)}px) saturate(1.22) contrast(0.96)`;
-  ctx.drawImage(ctx.canvas, 0, 0);
-  ctx.filter = "none";
-  mutatePixels(ctx, (data, i, p) => {
-    const edge = Math.abs(data[i] - data[i + 4] || 0) + Math.abs(data[i + 1] - data[i + 5] || 0);
-    if (edge > 42) {
-      data[i] = clamp(data[i] - 42);
-      data[i + 1] = clamp(data[i + 1] - 42);
-      data[i + 2] = clamp(data[i + 2] - 42);
-    }
-    const paper = (seededNoise(p) - 0.5) * 18;
-    data[i] = clamp(data[i] + paper);
-    data[i + 1] = clamp(data[i + 1] + paper);
-    data[i + 2] = clamp(data[i + 2] + paper);
-  });
-}
-
-function drawStitch(ctx, img, settings) {
-  // Style 17: Cross-Stitch / Embroidery.
-  const { width, height } = drawBaseImage(ctx, img);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const step = Math.max(9, Math.round(28 - settings.density / 5));
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0, 0, width, height);
-  ctx.lineWidth = 1.25;
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const i = (Math.min(height - 1, y) * width + Math.min(width - 1, x)) * 4;
-      ctx.strokeStyle = `rgb(${posterizeChannel(data[i], 5)}, ${posterizeChannel(data[i + 1], 5)}, ${posterizeChannel(data[i + 2], 5)})`;
-      ctx.beginPath();
-      ctx.moveTo(x + 2, y + 2);
-      ctx.lineTo(x + step - 2, y + step - 2);
-      ctx.moveTo(x + step - 2, y + 2);
-      ctx.lineTo(x + 2, y + step - 2);
-      ctx.stroke();
-    }
-  }
-}
-
-function drawThermal(ctx, img) {
-  // Style 18: Thermal Camera.
-  drawBaseImage(ctx, img);
-  mutatePixels(ctx, (data, i) => {
-    const b = brightness(data, i) / 255;
-    data[i] = clamp(255 * Math.min(1, b * 2.4));
-    data[i + 1] = clamp(255 * Math.sin(b * Math.PI));
-    data[i + 2] = clamp(255 * (1 - b) * 1.4);
-  });
-}
-
 function drawGlass(ctx, img, settings) {
-  // Style 19: Stained Glass.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   const data = ctx.getImageData(0, 0, width, height).data;
   const cell = Math.max(22, Math.round(80 - settings.density / 1.6));
   ctx.lineWidth = Math.max(3, cell * 0.08);
@@ -443,8 +446,7 @@ function drawGlass(ctx, img, settings) {
 }
 
 function drawComic(ctx, img, settings) {
-  // Style 20: Comic Book / Ben-Day Dots.
-  drawBaseImage(ctx, img);
+  drawBaseImage(ctx, img, settings);
   mutatePixels(ctx, (data, i) => {
     data[i] = posterizeChannel(data[i] * 1.08, 4);
     data[i + 1] = posterizeChannel(data[i + 1] * 1.08, 4);
@@ -465,8 +467,7 @@ function drawComic(ctx, img, settings) {
 }
 
 function drawFilm(ctx, img, settings) {
-  // Style 21: 35mm Film Emulation.
-  drawBaseImage(ctx, img);
+  drawBaseImage(ctx, img, settings);
   mutatePixels(ctx, (data, i, p) => {
     const b = brightness(data, i);
     const halation = b > 190 ? (b - 190) * (settings.bloom / 80) : 0;
@@ -478,8 +479,7 @@ function drawFilm(ctx, img, settings) {
 }
 
 function drawDream(ctx, img, settings) {
-  // Style 22: Dreamscape / Prism Bloom.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   ctx.globalAlpha = 0.42;
   ctx.filter = `blur(${Math.max(3, settings.bloom / 18)}px) saturate(1.35)`;
   ctx.drawImage(ctx.canvas, 0, 0, width, height);
@@ -493,8 +493,7 @@ function drawDream(ctx, img, settings) {
 }
 
 function drawPrint(ctx, img, settings) {
-  // Style 23: Lo-Fi / Degraded Print.
-  drawBaseImage(ctx, img);
+  drawBaseImage(ctx, img, settings);
   mutatePixels(ctx, (data, i, p) => {
     const n = seededNoise(p);
     data[i] = clamp(data[i] * 1.06 + 16);
@@ -520,8 +519,7 @@ function drawPrint(ctx, img, settings) {
 }
 
 function drawKinetic(ctx, img, settings) {
-  // Style 24: Kinetic & Radial Blur.
-  const { width, height } = drawBaseImage(ctx, img);
+  const { width, height } = drawBaseImage(ctx, img, settings);
   ctx.globalAlpha = 0.12;
   for (let i = 1; i < 12; i += 1) {
     const offset = i * settings.density * 0.08;
@@ -531,8 +529,7 @@ function drawKinetic(ctx, img, settings) {
 }
 
 function drawDither(ctx, img, settings) {
-  // Style 25: Cyber-Brutalist Dither.
-  drawBaseImage(ctx, img);
+  drawBaseImage(ctx, img, settings);
   const { width, height } = ctx.canvas;
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
@@ -565,14 +562,17 @@ function drawDither(ctx, img, settings) {
 }
 
 function renderImageStyle(ctx, img, styleId, settings) {
-  if (styleId === "ascii-photo") drawAsciiPhoto(ctx, img, settings);
+  if (styleId === "ascii") drawAscii(ctx, img, settings);
+  else if (styleId === "braille") drawBraille(ctx, img, settings);
+  else if (styleId === "matrix") drawMatrix(ctx, img, settings);
+  else if (styleId === "crosshatch") drawCrosshatch(ctx, img, settings);
+  else if (styleId === "pixelsort") drawPixelSort(ctx, img, settings);
+  else if (styleId === "sobel") drawSobel(ctx, img, settings);
   else if (styleId === "pixel") drawPixel(ctx, img, settings);
   else if (styleId === "glitch") drawGlitch(ctx, img, settings);
   else if (styleId === "halftone") drawHalftone(ctx, img, settings);
   else if (styleId === "lowpoly") drawLowPoly(ctx, img, settings);
-  else if (styleId === "paint") drawPaint(ctx, img, settings);
-  else if (styleId === "stitch") drawStitch(ctx, img, settings);
-  else if (styleId === "thermal") drawThermal(ctx, img, settings);
+  else if (styleId === "vignette") drawVignette(ctx, img, settings);
   else if (styleId === "glass") drawGlass(ctx, img, settings);
   else if (styleId === "comic") drawComic(ctx, img, settings);
   else if (styleId === "film") drawFilm(ctx, img, settings);
@@ -581,60 +581,72 @@ function renderImageStyle(ctx, img, styleId, settings) {
   else if (styleId === "kinetic") drawKinetic(ctx, img, settings);
   else drawDither(ctx, img, settings);
 
-  if (styleId !== "ascii-photo" && settings.grain > 0) addGrain(ctx, settings.grain * 0.35, true);
+  if (settings.grain > 0) addGrain(ctx, settings.grain * 0.35, true);
 }
 
-function App() {
-  const [mode, setMode] = useState("text");
-  const [text, setText] = useState("GLYPH_DSGN");
+function Slider({ label, value, setValue, min=0, max=100 }) {
+  return (
+    <div className="group relative">
+      <div className="mb-1 flex justify-between text-[10px] uppercase text-ghost">
+        <span>{label}</span>
+        <span className="text-volt">[ {value} ]</span>
+      </div>
+      <div className="relative h-2 w-full overflow-hidden border border-bone/25 bg-black">
+        <div
+          className="absolute bottom-0 left-0 top-0 bg-bone transition-all duration-75 group-hover:bg-volt"
+          style={{ width: `${((value - min) / (max - min)) * 100}%` }}
+        />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => setValue(Number(e.target.value))}
+          className="absolute inset-0 w-full cursor-crosshair opacity-0"
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
   const [styleId, setStyleId] = useState("ascii");
   const [palette, setPalette] = useState("green");
+  const [fontSize, setFontSize] = useState(12);
   const [density, setDensity] = useState(64);
   const [grain, setGrain] = useState(36);
   const [bloom, setBloom] = useState(42);
   const [chromatic, setChromatic] = useState(18);
-  const [animation, setAnimation] = useState(true);
+  const [contrast, setContrast] = useState(100);
+  const [brightnessVal, setBrightnessVal] = useState(100);
   const [colorize, setColorize] = useState(false);
-  const [deckOpen, setDeckOpen] = useState(true);
-  const [imageSrc, setImageSrc] = useState("");
-  const [imageName, setImageName] = useState("");
+  const [useWebcam, setUseWebcam] = useState(true);
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState([]);
-  const [dragging, setDragging] = useState(false);
 
   const canvasRef = useRef(null);
+  const videoRef = useRef(null);
+  const staticImgRef = useRef(null);
+  const animationRef = useRef(null);
   const outputRef = useRef(null);
-  const fileRef = useRef(null);
-  const lastHashRef = useRef("");
   const activePalette = PALETTES[palette];
-  const isTextMode = mode === "text";
-  const currentStyle = ALL_STYLES.find((style) => style.id === styleId) || TEXT_STYLES[0];
-  const visibleStyles = isTextMode ? TEXT_STYLES : IMAGE_STYLES;
 
-  const settings = useMemo(() => ({ density, grain, bloom, chromatic, palette, colorize }), [
-    density,
-    grain,
-    bloom,
-    chromatic,
-    palette,
-    colorize,
-  ]);
-
-  const textOutput = useMemo(() => createTextArt(styleId, text, settings), [styleId, text, settings]);
+  const settings = useMemo(() => ({
+    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, palette, colorize,
+  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, palette, colorize]);
 
   const flash = useCallback((message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 1200);
   }, []);
 
-  const addHistory = useCallback((kind, value, label) => {
-    setHistory((items) => [{ id: Date.now(), kind, value, label }, ...items].slice(0, 5));
-  }, []);
-
-  const handleMode = (next) => {
-    setMode(next);
-    setStyleId(next === "text" ? "ascii" : "pixel");
-  };
+  const addHistory = useCallback(() => {
+    if (!canvasRef.current) return;
+    const url = canvasRef.current.toDataURL("image/png");
+    const label = ALL_STYLES.find(s => s.id === styleId)?.name || styleId;
+    setHistory((items) => [{ id: Date.now(), value: url, label }, ...items].slice(0, 5));
+    flash("[ FRAME SNAPPED ]");
+  }, [styleId, flash]);
 
   const handleFile = useCallback((file) => {
     if (!file || !/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
@@ -643,124 +655,102 @@ function App() {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setImageSrc(reader.result);
-      setImageName(file.name);
-      setMode("image");
-      setStyleId((id) => IMAGE_STYLES.some((style) => style.id === id) ? id : "pixel");
-      flash("[ IMAGE LOADED ]");
+      const img = new Image();
+      img.onload = () => {
+        staticImgRef.current = img;
+        setUseWebcam(false);
+        flash("[ IMAGE LOADED ]");
+      };
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   }, [flash]);
 
-  const rerenderImage = useCallback(() => {
-    if (!imageSrc || !canvasRef.current || isTextMode) return;
-    const img = new Image();
-    img.onload = () => {
-      const ctx = canvasRef.current.getContext("2d", { willReadFrequently: true });
-      renderImageStyle(ctx, img, styleId, settings);
-      addHistory("image", canvasRef.current.toDataURL("image/png"), currentStyle.name);
-    };
-    img.src = imageSrc;
-  }, [addHistory, currentStyle.name, imageSrc, isTextMode, settings, styleId]);
-
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#/, "");
-    if (!hash) return;
-    try {
-      const parsed = JSON.parse(decodeURIComponent(atob(hash)));
-      if (parsed.text) setText(parsed.text);
-      if (parsed.mode) setMode(parsed.mode);
-      if (parsed.styleId) setStyleId(parsed.styleId);
-      if (parsed.palette && PALETTES[parsed.palette]) setPalette(parsed.palette);
-      if (parsed.density) setDensity(parsed.density);
-    } catch {
-      flash("[ HASH IGNORED ]");
-    }
-  }, [flash]);
-
-  useEffect(() => {
-    const hash = btoa(encodeURIComponent(JSON.stringify({ text, mode, styleId, palette, density })));
-    if (lastHashRef.current !== hash) {
-      lastHashRef.current = hash;
-      window.history.replaceState(null, "", `#${hash}`);
-    }
-  }, [density, mode, palette, styleId, text]);
-
-  useEffect(() => {
-    if (isTextMode) {
-      addHistory("text", textOutput, currentStyle.name);
+    if (!useWebcam) {
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+        videoRef.current.srcObject = null;
+      }
       return;
     }
-    rerenderImage();
-  }, [addHistory, currentStyle.name, isTextMode, rerenderImage, textOutput]);
-
-  useEffect(() => {
-    const handler = (event) => {
-      const meta = event.metaKey || event.ctrlKey;
-      if (!meta) return;
-      if (event.key === "Enter") {
-        event.preventDefault();
-        if (isTextMode) flash("[ RENDERED ]");
-        else rerenderImage();
-      }
-      if (event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        downloadPng();
-      }
-      if (event.key.toLowerCase() === "r") {
-        event.preventDefault();
-        const pool = isTextMode ? TEXT_STYLES : IMAGE_STYLES;
-        setStyleId(pool[Math.floor(Math.random() * pool.length)].id);
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+      .then((stream) => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        flash("[ WEBCAM DENIED ]");
+        setUseWebcam(false);
+      });
+      
+    return () => {
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  });
+  }, [useWebcam, flash]);
+
+  const drawFrame = useCallback(() => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d", { willReadFrequently: true });
+    
+    let sourceImg = null;
+    if (useWebcam && videoRef.current && videoRef.current.readyState >= 2) {
+      sourceImg = videoRef.current;
+    } else if (!useWebcam && staticImgRef.current) {
+      sourceImg = staticImgRef.current;
+    }
+    
+    if (sourceImg) {
+       renderImageStyle(ctx, sourceImg, styleId, settings);
+    }
+    
+    if (useWebcam) {
+       animationRef.current = requestAnimationFrame(drawFrame);
+    }
+  }, [useWebcam, styleId, settings]);
+
+  useEffect(() => {
+    if (useWebcam) {
+       animationRef.current = requestAnimationFrame(drawFrame);
+       return () => cancelAnimationFrame(animationRef.current);
+    } else {
+       drawFrame();
+    }
+  }, [drawFrame, useWebcam]);
 
   const downloadPng = async () => {
-    if (!isTextMode && canvasRef.current) {
+    if (canvasRef.current) {
       canvasRef.current.toBlob((blob) => blob && downloadBlob(blob, `glyph_dsgn-${styleId}.png`), "image/png", 1);
       flash("[ PNG SAVED ]");
-      return;
     }
-    if (!outputRef.current) return;
-    const canvas = await html2canvas(outputRef.current, { backgroundColor: activePalette.bg, scale: 2 });
-    canvas.toBlob((blob) => blob && downloadBlob(blob, `glyph_dsgn-${styleId}.png`), "image/png", 1);
-    flash("[ PNG SAVED ]");
-  };
-
-  const downloadTxt = () => {
-    const blob = new Blob([isTextMode ? textOutput : `GLYPH_DSGN image style: ${currentStyle.name}`], { type: "text/plain" });
-    downloadBlob(blob, `glyph_dsgn-${styleId}.txt`);
-    flash("[ TXT SAVED ]");
-  };
-
-  const downloadSvg = () => {
-    const escaped = textOutput.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char]));
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720"><rect width="1200" height="720" fill="${activePalette.bg}"/><foreignObject x="48" y="48" width="1104" height="624"><pre xmlns="http://www.w3.org/1999/xhtml" style="font-family:monospace;font-size:22px;white-space:pre-wrap;color:${activePalette.fg};">${escaped}</pre></foreignObject></svg>`;
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `glyph_dsgn-${styleId}.svg`);
-    flash("[ SVG SAVED ]");
-  };
-
-  const copyOutput = async () => {
-    if (isTextMode) await navigator.clipboard.writeText(textOutput);
-    else if (canvasRef.current) await navigator.clipboard.writeText(canvasRef.current.toDataURL("image/png"));
-    flash("[ COPIED ]");
   };
 
   const randomize = () => {
-    const pool = isTextMode ? TEXT_STYLES : IMAGE_STYLES;
-    setStyleId(pool[Math.floor(Math.random() * pool.length)].id);
+    setStyleId(ALL_STYLES[Math.floor(Math.random() * ALL_STYLES.length)].id);
     setDensity(Math.round(30 + Math.random() * 62));
     setGrain(Math.round(Math.random() * 70));
     setBloom(Math.round(Math.random() * 82));
     setChromatic(Math.round(Math.random() * 52));
+    setContrast(Math.round(80 + Math.random() * 40));
+    setBrightnessVal(Math.round(80 + Math.random() * 40));
+    setFontSize(Math.round(8 + Math.random() * 16));
     flash("[ RANDOMIZED ]");
   };
 
   return (
-    <main className="min-h-screen bg-deck text-bone">
-      <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+    <main 
+      className="min-h-screen bg-deck text-bone flex flex-col"
+      style={{
+        "--color-accent": activePalette.fg,
+        "--bg-accent": activePalette.bg,
+      }}
+    >
+      <div className="grid min-h-screen flex-1 grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
         <aside className="border-b border-bone/25 bg-black xl:border-b-0 xl:border-r">
           <div className="flex h-full flex-col">
             <div className="border-b border-bone/25 p-5">
@@ -775,22 +765,27 @@ function App() {
 
             <div className="grid grid-cols-2 border-b border-bone/25">
               <button
-                className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${isTextMode ? "bg-bone text-black" : "hover:bg-white/10"}`}
-                onClick={() => handleMode("text")}
+                className={`flex items-center justify-center gap-2 border-r border-bone/25 px-4 py-4 text-xs uppercase transition-colors duration-75 ${useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
+                onClick={() => setUseWebcam(true)}
               >
-                <Type className="h-4 w-4" /> Text
+                <Camera className="h-4 w-4" /> Live
               </button>
-              <button
-                className={`flex items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!isTextMode ? "bg-bone text-black" : "hover:bg-white/10"}`}
-                onClick={() => handleMode("image")}
+              <label
+                className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-xs uppercase transition-colors duration-75 ${!useWebcam ? "bg-bone text-black" : "hover:bg-white/10"}`}
               >
-                <ImageIcon className="h-4 w-4" /> Image
-              </button>
+                <ImageIcon className="h-4 w-4" /> Upload
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+              </label>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <div className="grid gap-2">
-                {visibleStyles.map((style) => (
+                {ALL_STYLES.map((style) => (
                   <button
                     key={style.id}
                     className={`group grid grid-cols-[42px_1fr] items-center border p-3 text-left transition-colors duration-75 ${styleId === style.id ? "border-volt bg-volt text-black" : "border-bone/25 bg-black hover:border-bone"}`}
@@ -798,255 +793,127 @@ function App() {
                     title={style.desc}
                   >
                     <span className="flex h-8 w-8 items-center justify-center border border-current text-[10px]">{style.tag}</span>
-                    <span>
-                      <span className="block text-xs font-bold uppercase">{style.name}</span>
-                      <span className={`mt-1 hidden text-[10px] uppercase ${styleId === style.id ? "text-black/70" : "text-ghost"} group-hover:block`}>
-                        {style.desc}
-                      </span>
-                    </span>
+                    <span className="pl-3 text-sm font-bold uppercase tracking-widest">{style.name}</span>
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="border-t border-bone/25 bg-black p-3">
+              <button
+                onClick={randomize}
+                className="group flex w-full items-center justify-center gap-2 border border-bone/25 bg-black py-4 text-xs font-bold uppercase tracking-widest text-ghost transition-colors hover:border-volt hover:text-volt"
+              >
+                <Shuffle className="h-4 w-4" /> Randomize
+              </button>
             </div>
           </div>
         </aside>
 
-        <section className="grid min-h-[680px] grid-rows-[auto_1fr_auto]">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-bone/25 bg-black/75 px-5 py-3">
-            <div>
-              <p className="text-[10px] uppercase text-ghost">active processor</p>
-              <h2 className="text-lg font-black uppercase">{currentStyle.name}</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="border border-bone/25 p-2 hover:border-volt hover:text-volt" onClick={randomize} title="Random style">
-                <Shuffle className="h-4 w-4" />
-              </button>
-              <button className="border border-bone/25 p-2 hover:border-volt hover:text-volt" onClick={() => setDeckOpen((v) => !v)} title="Toggle control deck">
-                <PanelRightOpen className="h-4 w-4" />
-              </button>
-            </div>
-          </header>
-
-          <div className="relative overflow-hidden p-4 sm:p-6">
-            <div
-              className="absolute inset-0 pointer-events-none opacity-25"
-              style={{ background: `radial-gradient(circle at 68% 18%, ${activePalette.alt}30, transparent 34%)` }}
-            />
-            <div className="relative grid h-full place-items-center border border-bone/25 bg-black/80 p-3 sm:p-5">
-              <div className="absolute left-3 top-3 text-[10px] uppercase text-ghost">canvas / live</div>
-              <div className="absolute right-3 top-3 text-[10px] uppercase text-ghost">{currentStyle.tag}</div>
-
-              {isTextMode ? (
-                <div
-                  ref={outputRef}
-                  className={`relative max-h-[70vh] w-full overflow-auto border border-bone/15 p-5 text-left ${styleId === "matrix" ? "shadow-[0_0_30px_rgba(0,255,80,0.25)]" : ""}`}
-                  style={{ backgroundColor: activePalette.bg, color: activePalette.fg }}
-                >
-                  {styleId === "matrix" && animation && (
-                    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-45">
-                      {Array.from({ length: 22 }, (_, i) => (
-                        <span
-                          key={i}
-                          className="absolute top-0 animate-rain text-xs"
-                          style={{ left: `${(i / 22) * 100}%`, animationDelay: `${i * 0.11}s`, color: activePalette.fg }}
-                        >
-                          {text || "GLYPH_DSGN"}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <pre className="relative m-0 whitespace-pre-wrap break-words text-[clamp(10px,1.8vw,18px)] leading-tight">
-                    {textOutput}
-                  </pre>
-                </div>
-              ) : (
-                <div className="grid w-full gap-4">
-                  {!imageSrc && (
-                    <button
-                      className={`grid min-h-[340px] place-items-center border border-dashed p-8 text-center transition-colors ${dragging ? "border-volt bg-volt/10" : "border-bone/30 bg-black"}`}
-                      onClick={() => fileRef.current?.click()}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragLeave={() => setDragging(false)}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        setDragging(false);
-                        handleFile(event.dataTransfer.files?.[0]);
-                      }}
-                    >
-                      <span>
-                        <Upload className="mx-auto mb-4 h-10 w-10 text-volt" />
-                        <span className="block text-sm uppercase">Drop image or click upload</span>
-                        <span className="mt-2 block text-[10px] uppercase text-ghost">JPG / PNG / WebP / GIF</span>
-                      </span>
-                    </button>
-                  )}
-                  <canvas ref={canvasRef} className={`mx-auto max-h-[70vh] max-w-full border border-bone/20 bg-black ${imageSrc ? "block" : "hidden"}`} />
-                  {imageSrc && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase text-ghost">
-                      <span>{imageName || "uploaded-image"}</span>
-                      <button className="border border-bone/25 px-3 py-2 hover:border-volt hover:text-volt" onClick={() => fileRef.current?.click()}>
-                        Replace Image
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+        <section className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-deck p-8" ref={outputRef}>
+          <video ref={videoRef} className="hidden" playsInline muted autoPlay />
+          <div className="relative flex h-full w-full items-center justify-center">
+            <canvas ref={canvasRef} className="max-h-full max-w-full object-contain shadow-2xl" />
           </div>
 
-          <footer className="grid gap-px border-t border-bone/25 bg-bone/25 sm:grid-cols-4">
-            <button className="flex items-center justify-center gap-2 bg-black px-4 py-4 text-xs uppercase hover:bg-bone hover:text-black" onClick={copyOutput}>
-              <Clipboard className="h-4 w-4" /> Copy
-            </button>
-            <button className="flex items-center justify-center gap-2 bg-black px-4 py-4 text-xs uppercase hover:bg-bone hover:text-black" onClick={downloadPng}>
-              <Download className="h-4 w-4" /> PNG
-            </button>
-            <button className="flex items-center justify-center gap-2 bg-black px-4 py-4 text-xs uppercase hover:bg-bone hover:text-black" onClick={downloadTxt}>
-              <Braces className="h-4 w-4" /> TXT
-            </button>
-            <button className="flex items-center justify-center gap-2 bg-black px-4 py-4 text-xs uppercase hover:bg-bone hover:text-black" onClick={downloadSvg} disabled={!isTextMode}>
-              <Aperture className="h-4 w-4" /> SVG
-            </button>
-          </footer>
+          <div className="pointer-events-none absolute bottom-8 left-8 flex flex-col gap-1">
+            <div className="flex gap-2">
+              <span className="bg-volt px-2 py-1 text-[10px] font-bold uppercase text-black">REC</span>
+              <span className="bg-black px-2 py-1 text-[10px] uppercase text-bone border border-bone/25">
+                {ALL_STYLES.find((s) => s.id === styleId)?.name}
+              </span>
+            </div>
+            {toast && (
+              <span className="animate-pulse bg-bone px-2 py-1 text-[10px] font-bold uppercase text-black">
+                {toast}
+              </span>
+            )}
+          </div>
+          <div className="pointer-events-none absolute bottom-8 right-8 text-right text-[10px] text-ghost opacity-50">
+            <div>DSGN_SYS v1.0.1</div>
+            <div>[CMD+D] SAVE</div>
+          </div>
         </section>
 
-        <aside className={`${deckOpen ? "block" : "hidden"} border-t border-bone/25 bg-black xl:border-l xl:border-t-0`}>
-          <div className="border-b border-bone/25 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] uppercase text-ghost">mechanical panel</p>
-                <h2 className="text-base font-black uppercase">Control Deck</h2>
+        <aside className="flex flex-col border-t border-bone/25 bg-black xl:border-l xl:border-t-0">
+          <div className="flex-1 overflow-y-auto p-5">
+            <div className="grid gap-6">
+              <div className="grid gap-2">
+                <span className="text-[10px] uppercase text-ghost">Palette</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(PALETTES).map(([key, value]) => (
+                    <button
+                      key={key}
+                      onClick={() => setPalette(key)}
+                      className={`flex h-8 items-center justify-between border px-2 text-[10px] uppercase transition-colors ${palette === key ? "border-volt text-volt" : "border-bone/25 text-ghost hover:border-bone"}`}
+                    >
+                      <span>{key}</span>
+                      <div className="flex h-4 w-4 border border-current" style={{ backgroundColor: value.bg }}>
+                        <div className="h-full w-1/2" style={{ backgroundColor: value.fg }} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <ChevronDown className="h-4 w-4 text-volt xl:hidden" />
+
+              <div className="grid gap-4">
+                <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Parameters</span>
+                <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
+                <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
+                <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={200} />
+                <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={200} />
+                <Slider label="Grain" value={grain} setValue={setGrain} min={0} max={100} />
+                <Slider label="Bloom" value={bloom} setValue={setBloom} min={0} max={100} />
+                <Slider label="Chromatic" value={chromatic} setValue={setChromatic} min={0} max={100} />
+                <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-2 hover:border-volt">
+                  <span className="text-[10px] uppercase text-ghost group-hover:text-volt">Colorize Output</span>
+                  <input type="checkbox" checked={colorize} onChange={(e) => setColorize(e.target.checked)} className="accent-volt" />
+                </label>
+              </div>
+
+              <div className="grid gap-2">
+                <span className="border-b border-bone/25 pb-2 text-[10px] uppercase text-ghost">Export</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={downloadPng} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
+                    <Download className="h-3 w-3" /> PNG
+                  </button>
+                  <button onClick={addHistory} className="flex items-center justify-center gap-2 border border-bone/25 bg-black py-3 text-[10px] font-bold uppercase text-ghost hover:border-volt hover:bg-volt hover:text-black">
+                    <Camera className="h-3 w-3" /> SNAP
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-5 p-5">
-            {isTextMode ? (
-              <label className="grid gap-2">
-                <span className="text-[10px] uppercase text-ghost">Text Input</span>
-                <textarea
-                  className="min-h-36 resize-y border border-bone/25 bg-deck p-3 text-sm uppercase outline-none focus:border-volt"
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  spellCheck="false"
-                />
-              </label>
-            ) : (
-              <div className="grid gap-2">
-                <span className="text-[10px] uppercase text-ghost">Image Input</span>
-                <button className="flex items-center justify-center gap-2 border border-bone/25 bg-deck px-4 py-5 text-xs uppercase hover:border-volt" onClick={() => fileRef.current?.click()}>
-                  <Upload className="h-4 w-4" /> Select Media
+          <div className="h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-1 xl:border-b xl:border-t-0">
+            <span className="mb-2 block text-[10px] uppercase text-ghost">Cache Memory</span>
+            <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-auto xl:flex-col xl:overflow-y-auto">
+              {history.length === 0 && (
+                <div className="flex h-full w-full items-center justify-center border border-dashed border-bone/25 p-4 text-center text-[10px] text-ghost">
+                  NO SNAPS
+                </div>
+              )}
+              {history.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    const link = document.createElement("a");
+                    link.href = item.value;
+                    link.download = `glyph_dsgn-snap-${item.id}.png`;
+                    link.click();
+                  }}
+                  className="group relative h-full w-24 flex-shrink-0 border border-bone/25 xl:h-24 xl:w-full"
+                >
+                  <img alt="" src={item.value} className="h-full w-full object-cover grayscale transition-all group-hover:grayscale-0" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Download className="h-4 w-4 text-volt" />
+                  </div>
                 </button>
-              </div>
-            )}
-
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              onChange={(event) => handleFile(event.target.files?.[0])}
-            />
-
-            <div className="grid gap-2">
-              <span className="text-[10px] uppercase text-ghost">Palette</span>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(PALETTES).map(([key, value]) => (
-                  <button
-                    key={key}
-                    className={`flex items-center gap-2 border p-2 text-left text-[10px] uppercase ${palette === key ? "border-volt bg-volt text-black" : "border-bone/25"}`}
-                    onClick={() => setPalette(key)}
-                  >
-                    <span className="h-4 w-4 border border-current" style={{ background: value.fg }} />
-                    {value.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Slider label="Density" value={density} setValue={setDensity} />
-            <Slider label="Grain" value={grain} setValue={setGrain} />
-            <Slider label="Bloom" value={bloom} setValue={setBloom} />
-            <Slider label="Chromatic" value={chromatic} setValue={setChromatic} />
-
-            <label className="flex items-center justify-between border border-bone/25 p-3 text-xs uppercase">
-              <span>Color ASCII</span>
-              <input type="checkbox" checked={colorize} onChange={(event) => setColorize(event.target.checked)} />
-            </label>
-
-            <label className="flex items-center justify-between border border-bone/25 p-3 text-xs uppercase">
-              <span>Animation</span>
-              <input type="checkbox" checked={animation} onChange={(event) => setAnimation(event.target.checked)} />
-            </label>
-
-            <div className="border border-bone/25 p-3">
-              <div className="mb-3 flex items-center gap-2 text-[10px] uppercase text-ghost">
-                <Keyboard className="h-3 w-3" /> Shortcuts
-              </div>
-              <div className="grid gap-2 text-[10px] uppercase">
-                <span>Ctrl/Command + Enter Render</span>
-                <span>Ctrl/Command + D Download</span>
-                <span>Ctrl/Command + R Random</span>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <span className="text-[10px] uppercase text-ghost">History Rail</span>
-              <div className="grid grid-cols-5 gap-2">
-                {history.map((item) => (
-                  <button
-                    key={item.id}
-                    className="aspect-square overflow-hidden border border-bone/25 bg-deck text-[8px] uppercase hover:border-volt"
-                    onClick={() => {
-                      if (item.kind === "text") {
-                        setMode("text");
-                        setText(item.value.slice(0, 160));
-                      } else {
-                        setMode("image");
-                        setImageSrc(item.value);
-                      }
-                    }}
-                    title={item.label}
-                  >
-                    {item.kind === "image" ? <img alt="" src={item.value} className="h-full w-full object-cover grayscale" /> : item.label}
-                  </button>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </aside>
       </div>
-
-      {toast && (
-        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 border border-volt bg-black px-4 py-3 text-xs uppercase text-volt shadow-[0_0_20px_rgba(255,77,0,0.45)]">
-          {toast}
-        </div>
-      )}
     </main>
   );
 }
-
-function Slider({ label, value, setValue }) {
-  return (
-    <label className="grid gap-2">
-      <span className="flex items-center justify-between text-[10px] uppercase text-ghost">
-        {label}
-        <span className="text-bone">{value}</span>
-      </span>
-      <input
-        className="accent-[#ff4d00]"
-        type="range"
-        min="0"
-        max="100"
-        value={value}
-        onChange={(event) => setValue(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-export default App;

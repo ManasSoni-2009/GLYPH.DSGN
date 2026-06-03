@@ -6,9 +6,9 @@ export default {
         mono: ["JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Consolas", "monospace"],
       },
       colors: {
-        deck: "#050505",
+        deck: "var(--bg-accent, #050505)",
         bone: "#f5f2e8",
-        volt: "#ff4d00",
+        volt: "var(--color-accent, #ff4d00)",
         ghost: "#9ca3af",
       },
       keyframes: {
