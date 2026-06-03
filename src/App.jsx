@@ -367,6 +367,7 @@ export default function App() {
   const [chromatic, setChromatic] = useState(18);
   const [contrast, setContrast] = useState(100);
   const [brightnessVal, setBrightnessVal] = useState(100);
+  const [depth, setDepth] = useState(50);
   const [colorize, setColorize] = useState(false);
   const [useWebcam, setUseWebcam] = useState(true);
   const [isolateSubject, setIsolateSubject] = useState(true);
@@ -388,8 +389,8 @@ export default function App() {
   const activePalette = PALETTES[palette];
 
   const settings = useMemo(() => ({
-    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, palette, colorize, isolateSubject
-  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, palette, colorize, isolateSubject]);
+    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, depth, palette, colorize, isolateSubject
+  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, depth, palette, colorize, isolateSubject]);
 
   const flash = useCallback((message) => {
     setToast(message);
@@ -588,13 +589,22 @@ export default function App() {
         const frameData = hctx.getImageData(0, 0, cols, rows);
         const data = frameData.data;
         
-        // 4. Color Correction & Smoothing
+        // 4. Color Correction, Depth & Smoothing
+        const depthPower = 1 + (settings.depth / 100) * 4;
         const contrastFactor = (259 * (settings.contrast * 2.55 + 255)) / (255 * (259 - settings.contrast * 2.55));
         for (let i = 0; i < data.length; i+=4) {
             for (let c=0; c<3; c++) {
                let v = data[i+c];
                v = v * (settings.brightness / 100);
-               v = ((v / 255 - 0.5) * (settings.contrast / 100) + 0.5) * 255;
+               
+               if (settings.depth > 0) {
+                 v = Math.pow(v / 255, depthPower) * 255;
+               }
+               
+               if (settings.contrast !== 100) {
+                 v = contrastFactor * (v - 128) + 128;
+               }
+
                data[i+c] = Math.max(0, Math.min(255, v));
             }
         }
@@ -853,6 +863,7 @@ export default function App() {
               </label>
 
               <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
+              <Slider label="Depth (3D)" value={depth} setValue={setDepth} min={0} max={100} />
               <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
               <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={200} />
               <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={200} />
