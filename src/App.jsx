@@ -372,6 +372,7 @@ export default function App() {
   const [isolateSubject, setIsolateSubject] = useState(true);
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState([]);
+  const [imgHash, setImgHash] = useState(0);
 
   const canvasRef = useRef(null);
   const hiddenCanvasRef = useRef(null);
@@ -438,6 +439,7 @@ export default function App() {
       img.onload = () => {
         staticImgRef.current = img;
         setUseWebcam(false);
+        setImgHash(Date.now());
         flash("[ IMAGE LOADED ]");
       };
       img.src = reader.result;
@@ -490,9 +492,26 @@ export default function App() {
     
     if (sourceImg) {
         const parent = canvas.parentElement;
-        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
-            canvas.width = parent.clientWidth;
-            canvas.height = parent.clientHeight;
+        let targetW, targetH;
+        if (useWebcam) {
+            targetW = parent.clientWidth;
+            targetH = parent.clientHeight;
+        } else if (staticImgRef.current) {
+            const imgW = staticImgRef.current.naturalWidth;
+            const imgH = staticImgRef.current.naturalHeight;
+            const screenW = parent.clientWidth;
+            const screenH = parent.clientHeight;
+            const scale = Math.min(screenW / imgW, screenH / imgH, 1);
+            targetW = Math.max(1, Math.round(imgW * scale));
+            targetH = Math.max(1, Math.round(imgH * scale));
+        } else {
+            targetW = parent.clientWidth;
+            targetH = parent.clientHeight;
+        }
+        
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+            canvas.width = targetW;
+            canvas.height = targetH;
         }
         
         const isTextMode = ["ascii", "braille", "matrix"].includes(styleId);
@@ -580,16 +599,18 @@ export default function App() {
             }
         }
         
-        if (!prevFrameRef.current || prevFrameRef.current.length !== data.length) {
-            prevFrameRef.current = new Float32Array(data.length);
-            for(let i=0; i<data.length; i++) prevFrameRef.current[i] = data[i];
-        }
-        const prev = prevFrameRef.current;
-        const inertia = 0.65;
-        for(let i=0; i<data.length; i++) {
-            const nv = prev[i] + (data[i] - prev[i]) * (1 - inertia);
-            prev[i] = nv;
-            data[i] = nv;
+        const inertia = useWebcam ? 0.65 : 0;
+        if (inertia > 0) {
+            if (!prevFrameRef.current || prevFrameRef.current.length !== data.length) {
+                prevFrameRef.current = new Float32Array(data.length);
+                for(let i=0; i<data.length; i++) prevFrameRef.current[i] = data[i];
+            }
+            const prev = prevFrameRef.current;
+            for(let i=0; i<data.length; i++) {
+                const nv = prev[i] + (data[i] - prev[i]) * (1 - inertia);
+                prev[i] = nv;
+                data[i] = nv;
+            }
         }
         
         // 5. Render
@@ -669,7 +690,7 @@ export default function App() {
     } else {
        drawFrame();
     }
-  }, [drawFrame, useWebcam]);
+  }, [drawFrame, useWebcam, imgHash]);
 
   const downloadPng = async () => {
     if (canvasRef.current) {
