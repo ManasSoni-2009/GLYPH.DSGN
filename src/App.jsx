@@ -367,6 +367,8 @@ export default function App() {
   const [chromatic, setChromatic] = useState(18);
   const [contrast, setContrast] = useState(100);
   const [brightnessVal, setBrightnessVal] = useState(100);
+  const [depth, setDepth] = useState(50);
+  const [sharpness, setSharpness] = useState(50);
   const [colorize, setColorize] = useState(false);
   const [useWebcam, setUseWebcam] = useState(true);
   const [isolateSubject, setIsolateSubject] = useState(true);
@@ -388,8 +390,8 @@ export default function App() {
   const activePalette = PALETTES[palette];
 
   const settings = useMemo(() => ({
-    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, palette, colorize, isolateSubject
-  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, palette, colorize, isolateSubject]);
+    fontSize, density, grain, bloom, chromatic, contrast, brightness: brightnessVal, depth, sharpness, palette, colorize, isolateSubject
+  }), [fontSize, density, grain, bloom, chromatic, contrast, brightnessVal, depth, sharpness, palette, colorize, isolateSubject]);
 
   const flash = useCallback((message) => {
     setToast(message);
@@ -588,7 +590,7 @@ export default function App() {
         const frameData = hctx.getImageData(0, 0, cols, rows);
         const data = frameData.data;
         
-        // 4. Temporal Smoothing (Exactly like ascii-yourself)
+        // 4. Temporal Smoothing
         const inertia = useWebcam ? 0.75 : 0;
         if (inertia > 0) {
             if (!prevFrameRef.current || prevFrameRef.current.length !== data.length) {
@@ -605,16 +607,34 @@ export default function App() {
             }
         }
         
-        // 5. Image Processing / Contrast Factor (Exactly like ascii-yourself)
-        const rawContrast = settings.contrast / 100;
-        const contrastFactor = (259 * (rawContrast * 255 + 255)) / (255 * (259 - rawContrast * 255));
+        // 4.5. Edge Sharpening (Crucial for ASCII definition)
+        if (settings.sharpness > 0) {
+            const amount = settings.sharpness / 100 * 2.0;
+            const w = cols, h = rows;
+            const tempData = new Uint8Array(data);
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    for (let c = 0; c < 3; c++) {
+                        const i = (y * w + x) * 4 + c;
+                        const surround = (tempData[((y-1)*w + x)*4 + c] + tempData[((y+1)*w + x)*4 + c] + tempData[(y*w + (x-1))*4 + c] + tempData[(y*w + (x+1))*4 + c]) * 0.25;
+                        let val = tempData[i] + amount * (tempData[i] - surround);
+                        data[i] = Math.max(0, Math.min(255, val));
+                    }
+                }
+            }
+        }
+        
+        // 5. Image Processing / Contrast Factor (Stable Linear & Gamma)
+        const contrastFactor = settings.contrast / 100;
+        const gamma = 1 + (settings.depth / 100) * 3.0;
         
         if (!isTextMode) {
             for (let i = 0; i < data.length; i+=4) {
                 for (let c=0; c<3; c++) {
                    let v = data[i+c];
-                   v = contrastFactor * (v - 128) + 128;
+                   v = (v - 128) * contrastFactor + 128;
                    v = v * (settings.brightness / 100);
+                   if (settings.depth > 0) v = Math.pow(Math.max(0, v) / 255, gamma) * 255;
                    data[i+c] = Math.max(0, Math.min(255, v));
                 }
             }
@@ -648,8 +668,9 @@ export default function App() {
                              if (x >= cols || y >= rows) continue;
                              const offset = (y * cols + x) * 4;
                              let lum = 0.2126*data[offset] + 0.7152*data[offset+1] + 0.0722*data[offset+2];
-                             lum = contrastFactor * (lum - 128) + 128;
+                             lum = (lum - 128) * contrastFactor + 128;
                              lum *= (settings.brightness / 100);
+                             if (settings.depth > 0) lum = Math.pow(Math.max(0, lum) / 255, gamma) * 255;
                              lum = Math.max(0, Math.min(255, lum));
 
                              if (lum > settings.density * 2.5) code += dots[dy][dx];
@@ -666,8 +687,9 @@ export default function App() {
                         const offset = (y * cols + x) * 4;
                         const r = data[offset], g = data[offset+1], b = data[offset+2];
                         let lum = 0.2126*r + 0.7152*g + 0.0722*b;
-                        lum = contrastFactor * (lum - 128) + 128;
+                        lum = (lum - 128) * contrastFactor + 128;
                         lum *= (settings.brightness / 100);
+                        if (settings.depth > 0) lum = Math.pow(Math.max(0, lum) / 255, gamma) * 255;
                         lum = Math.max(0, Math.min(255, lum));
                         
                         if (settings.colorize && (styleId === 'ascii' || styleId === 'matrix')) {
@@ -868,8 +890,10 @@ export default function App() {
 
               <Slider label="Font Size" value={fontSize} setValue={setFontSize} min={6} max={48} />
               <Slider label="Density" value={density} setValue={setDensity} min={0} max={100} />
-              <Slider label="Contrast" value={contrast} setValue={setContrast} min={50} max={300} />
-              <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={50} max={200} />
+              <Slider label="Contrast" value={contrast} setValue={setContrast} min={0} max={300} />
+              <Slider label="Brightness" value={brightnessVal} setValue={setBrightnessVal} min={0} max={300} />
+              <Slider label="Depth (3D)" value={depth} setValue={setDepth} min={0} max={100} />
+              <Slider label="Edge Sharpness" value={sharpness} setValue={setSharpness} min={0} max={100} />
               <Slider label="Grain" value={grain} setValue={setGrain} min={0} max={100} />
               
               <label className="group flex cursor-pointer items-center justify-between border border-bone/25 px-3 py-2 hover:border-volt">
