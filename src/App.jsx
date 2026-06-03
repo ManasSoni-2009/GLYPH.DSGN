@@ -827,7 +827,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="hidden xl:block h-48 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-shrink-0 xl:border-b xl:border-t-0">
+        <div className="block h-32 border-t border-bone/25 bg-black p-3 xl:h-auto xl:flex-shrink-0 xl:border-b xl:border-t-0">
           <span className="mb-2 block text-[10px] uppercase text-ghost">Cache Memory</span>
           <div className="flex h-[calc(100%-1.5rem)] gap-2 overflow-x-auto xl:h-24">
             {history.length === 0 && (
