@@ -721,12 +721,9 @@ export default function App() {
   }, [useWebcam, styleId, settings]);
 
   useEffect(() => {
-    if (useWebcam) {
-       animationRef.current = requestAnimationFrame(drawFrame);
-       return () => cancelAnimationFrame(animationRef.current);
-    } else {
-       drawFrame();
-    }
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    animationRef.current = requestAnimationFrame(drawFrame);
+    return () => cancelAnimationFrame(animationRef.current);
   }, [drawFrame, useWebcam, imgHash]);
 
   const downloadPng = async () => {
